@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include "koopa.h"
 #include "ast.h"
 using namespace std;
 
