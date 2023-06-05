@@ -8,7 +8,7 @@ class BaseAST
 {
  public:
   virtual ~BaseAST() = default;
-  virtual void Dump() const = 0;
+  virtual void Dump(string& koopaIR) const = 0;
 };
 
 // CompUnit 是 BaseAST
@@ -17,11 +17,11 @@ class CompUnitAST : public BaseAST
  public:
   std::unique_ptr<BaseAST> func_def;
 
-  void Dump() const override 
+  void Dump(string& koopaIR) const override 
   {
-    std::cout << "CompUnitAST { ";
-    func_def->Dump();
-    std::cout << " }";
+    //std::cout << "CompUnitAST { ";
+    func_def->Dump(koopaIR);
+    //std::cout << " }";
   }
 };
 
@@ -32,13 +32,16 @@ class FuncDefAST : public BaseAST {
   std::string ident;
   std::unique_ptr<BaseAST> block;
 
-  void Dump() const override 
+  void Dump(string& koopaIR) const override 
   {
-    std::cout << "FuncDefAST { ";
-    func_type->Dump();
-    std::cout << ", " << ident << ", ";
-    block->Dump();
-    std::cout << " }";
+    //std::cout << "FuncDefAST { ";
+    koopaIR += "fun @";
+    koopaIR += ident;
+    koopaIR += "(): ";
+    func_type->Dump(koopaIR);
+    //std::cout << ", " << ident << ", ";
+    block->Dump(koopaIR);
+    //std::cout << " }";
   }
 };
 
@@ -47,11 +50,12 @@ class FuncTypeAST : public BaseAST
 {
     public:
         std::string functype;
-        void Dump() const override
+        void Dump(string& koopaIR) const override
         {
-            std::cout << "FuncTypeAST { ";
-            std::cout << "int ";
-            std::cout << " }";
+            //std::cout << "FuncTypeAST { ";
+            //std::cout << "int ";
+            //std::cout << " }";
+            koopaIR += "i32";
         }
 };
 
@@ -61,11 +65,14 @@ class BlockAST : public BaseAST
 {
     public:
         std::unique_ptr<BaseAST> stmt;
-        void Dump() const override
+        void Dump(string& koopaIR) const override
         {
-            std::cout << "BlockAST { ";
-            stmt->Dump();
-            std::cout << " }";
+            //std::cout << "BlockAST { ";
+            koopaIR += "{\n";
+            koopaIR += "%entry:\n";
+            stmt->Dump(koopaIR);
+            //std::cout << " }";
+            koopaIR +="\n}\n";
         }
 };
 
@@ -74,11 +81,13 @@ class StmtAST : public BaseAST
 {
     public:
         int number;
-        void Dump() const override
+        void Dump(string& koopaIR) const override
         {
-            std::cout << "StmtAST { ";
-            std::cout <<" "<< number <<" ";
-            std::cout << " }";
+            koopaIR += "  ret ";
+            koopaIR += to_string(number);
+            //std::cout << "StmtAST { ";
+            //std::cout <<" "<< number <<" ";
+            //std::cout << " }";
         }
 };
 
