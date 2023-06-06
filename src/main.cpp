@@ -3,8 +3,9 @@
 #include <iostream>
 #include <memory>
 #include <string>
-// #include "koopa.h"
+#include <cstring>
 #include "ast.h"
+#include "genriscv.h"
 using namespace std;
 
 // 声明 lexer 的输入, 以及 parser 函数
@@ -45,7 +46,7 @@ int main(int argc, const char *argv[])
   }
   else // risc-v
   {
-    
+    genriscv(koopaIR);
   }
   fclose(stdout);
   return 0;
