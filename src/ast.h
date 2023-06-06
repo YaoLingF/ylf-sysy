@@ -4,11 +4,13 @@
 #include <memory>
 using namespace std;
 //基类
+extern int cnt;
 class BaseAST
 {
  public:
   virtual ~BaseAST() = default;
   virtual void Dump(string& koopaIR) const = 0;
+  virtual string cal(string& koopaIR) const = 0;
 };
 
 // CompUnit 是 BaseAST
@@ -22,6 +24,10 @@ class CompUnitAST : public BaseAST
     //std::cout << "CompUnitAST { ";
     func_def->Dump(koopaIR);
     //std::cout << " }";
+  }
+  string cal(string& koopaIR) const override
+  {
+    return "";
   }
 };
 
@@ -43,6 +49,10 @@ class FuncDefAST : public BaseAST {
     block->Dump(koopaIR);
     //std::cout << " }";
   }
+  string cal(string& koopaIR) const override
+  {
+    return "";
+  }
 };
 
 // FuncTypeAST 也是 BaseAST
@@ -56,6 +66,10 @@ class FuncTypeAST : public BaseAST
             //std::cout << "int ";
             //std::cout << " }";
             koopaIR += "i32";
+        }
+        string cal(string& koopaIR) const override
+        {
+          return "";
         }
 };
 
@@ -74,22 +88,120 @@ class BlockAST : public BaseAST
             //std::cout << " }";
             koopaIR +="\n}\n";
         }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+        }
 };
 
 // StmtAST 也是 BaseAST
 class StmtAST : public BaseAST
 {
     public:
-        int number;
+        unique_ptr<BaseAST> exp;
         void Dump(string& koopaIR) const override
         {
+            string re = exp->cal(koopaIR);
             koopaIR += "  ret ";
-            koopaIR += to_string(number);
+            koopaIR += re;
             //std::cout << "StmtAST { ";
             //std::cout <<" "<< number <<" ";
             //std::cout << " }";
         }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+        }
 };
+
+class ExpAST :public BaseAST
+{
+    public:
+        unique_ptr<BaseAST> unaryexp;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          return unaryexp->cal(koopaIR);
+        }
+};
+
+class UnaryExp1AST : public BaseAST
+{
+      public:
+          unique_ptr<BaseAST> primaryexp;
+          void Dump(string& koopaIR) const override
+          {
+
+          }
+          string cal(string& koopaIR) const override
+          {
+            return primaryexp->cal(koopaIR);
+          }
+};
+
+class UnaryExp2AST : public BaseAST
+{
+      public:
+          string unaryop;
+          unique_ptr<BaseAST> unaryexp;
+          void Dump(string& koopaIR) const override
+          {
+
+          }
+          string cal(string& koopaIR) const override
+          {
+             string R = unaryexp->cal(koopaIR);
+             switch(unaryop[0])
+             {
+              case '+':
+                return R;
+                break;
+              case '-':
+                koopaIR += " %" + to_string(++cnt) + " = sub 0, " + R +"\n";
+                break;
+              case '!':
+                koopaIR += " %" + to_string(++cnt) + " = eq " + R +", 0\n";
+                break;
+              default :
+                break;
+             }
+             return "%"+to_string(cnt);
+          }
+};
+
+class PrimaryExp1AST : public BaseAST
+{
+      public:
+          unique_ptr<BaseAST> exp;
+          void Dump(string& koopaIR) const override
+          {
+
+          }
+          string cal(string& koopaIR) const override
+          {
+            return exp->cal(koopaIR);
+          }
+};
+
+class PrimaryExp2AST : public BaseAST
+{
+      public:
+          int number;
+          void Dump(string& koopaIR) const override
+          {
+
+          }
+          string cal(string& koopaIR) const override
+          {
+            return to_string(number);
+          }
+          
+};
+
+
 
 
 
