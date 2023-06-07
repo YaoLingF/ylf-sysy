@@ -21,8 +21,9 @@ void Visit(const koopa_raw_value_t &value);
 void Visit(const koopa_raw_return_t &ret);
 void Visit(const koopa_raw_integer_t &integer);
 void Visit_binary(const koopa_raw_value_t &value);
-void Visit_bin_eq(const koopa_raw_value_t &value);
+void Visit_bin_con(const koopa_raw_value_t &value);
 void Visit_bin_double_reg(const koopa_raw_value_t &value);
+string get_reg(const koopa_raw_value_t &value);
 
 void genriscv(string koopaIR)
 { 
@@ -140,7 +141,7 @@ void Visit(const koopa_raw_return_t &ret)
     }
     else
     { // value指向了上一条指令的结果寄存器
-        cout << "  mv\ta0, t" + to_string(map_reg[ret.value]) + "\n"; //将上一条指令的结果寄存器写入其中
+        cout << "  mv a0, " + get_reg(ret.value) + "\n"; //将上一条指令的结果寄存器写入其中
         // 写入
         //cout << "return's last instrucions register=" << map_reg[ret.value] << endl;
     }
@@ -161,88 +162,132 @@ void Visit_binary(const koopa_raw_value_t &value)
     // 根据运算符类型判断后续如何翻译
     switch (binary.op)
     {
-    case KOOPA_RBO_EQ:
-        // outfile << "  # eq\n";
-        Visit_bin_eq(value);
+      case KOOPA_RBO_NOT_EQ:
+      case KOOPA_RBO_EQ:
+      case KOOPA_RBO_GT:
+      case KOOPA_RBO_LT:
+      case KOOPA_RBO_GE:
+      case KOOPA_RBO_LE:
+      case KOOPA_RBO_AND:
+      case KOOPA_RBO_OR:
+        Visit_bin_con(value);
         break;
-    case KOOPA_RBO_ADD:
-        // outfile << "  # add\n";
+      case KOOPA_RBO_ADD:
+      case KOOPA_RBO_SUB:
+      case KOOPA_RBO_MUL:
+      case KOOPA_RBO_DIV:
+      case KOOPA_RBO_MOD:
         Visit_bin_double_reg(value);
         break;
-    case KOOPA_RBO_SUB:
-        // outfile << "  # sub\n";
-        Visit_bin_double_reg(value);
-        break;
-    case KOOPA_RBO_MUL:
-        // outfile << "  # mul\n";
-        Visit_bin_double_reg(value);
-        break;
-    case KOOPA_RBO_DIV:
-        // outfile << "  # div\n";
-        Visit_bin_double_reg(value);
-        break;
-    case KOOPA_RBO_MOD:
-        // outfile << "  # mod\n";
-        Visit_bin_double_reg(value);
-        break;
-    default:
-        // 其他类型暂时遇不到
+      default:
         assert(false);
     }
-    return;
 }
 
-void Visit_bin_eq(const koopa_raw_value_t &value)
+void Visit_bin_con(const koopa_raw_value_t &value)
 { 
-    //cout << " eq 指令" << endl;
+    //cout << " condition 指令" << endl;
     const auto &kind = value->kind;
     const auto binary = kind.data.binary;
     string leftreg, rightreg;                            // 左右节点值
+    //cout<<"\n现在"<<register_num<<"\n";
     map_reg[value] = register_num++;                     // 为当前指令分配一个寄存器
-    string eqregister = "t" + to_string(map_reg[value]); // 定义当前指令的寄存器
+    string eqregister = get_reg(value); // 定义当前指令的寄存器
     if (binary.lhs->kind.tag == KOOPA_RVT_INTEGER)
     { //先处理左节点,左节点为int值
-        if (binary.lhs->kind.data.integer.value != 0)
-        { //左节点为非0结点, 用li指令到当前寄存器
+        if (binary.lhs->kind.data.integer.value == 0)
+        { //左节点为0
+            leftreg = "x0";
+        }
+        else
+        { //左节点为非0 int, li到当前寄存器
             cout << "  li\t" << eqregister << ", ";
             Visit(binary.lhs);
             cout << endl;
             leftreg = eqregister;
         }
-        else
-        { //左节点为0值
-            leftreg = "x0";
-        }
     }
     else
     {
-        leftreg = "t" + to_string(map_reg[binary.lhs]); //获取左边的寄存器
+        assert(binary.lhs->kind.tag != KOOPA_RVT_INTEGER); // assert左节点不是int值
+        leftreg = get_reg(binary.lhs);    //获取左边的寄存器
     }
+
     if (binary.rhs->kind.tag == KOOPA_RVT_INTEGER)
-    { //处理右节点,右节点为int值
-        if (binary.rhs->kind.data.integer.value != 0)
-        { //右节点为非0结点, 用xori立即数指令
-            cout << "  xori\t" + eqregister + ", " + leftreg + ", ";
+    { //处理右节点,右节点为int值且为0
+        if (binary.rhs->kind.data.integer.value == 0)
+        { //右节点为0
+            rightreg = "x0";
+        }
+        else
+        { //右节点为非0 int, li到当前寄存器
+            if(binary.lhs->kind.tag == KOOPA_RVT_INTEGER && binary.lhs->kind.data.integer.value != 0)
+            {
+                map_reg[value] = register_num++;              // 为当前指令再分配一个寄存器
+                eqregister = get_reg(value); // 定义当前指令的寄存器
+            }
+            cout << "  li\t" << eqregister << ", ";
             Visit(binary.rhs);
             cout << endl;
-        }
-        else
-        { //右节点为0值, 用x0
-            cout << "  xor\t" + eqregister + ", " + leftreg + ", x0" + '\n';
+            rightreg = eqregister;
         }
     }
     else
     {
-        rightreg = "t" + to_string(map_reg[binary.lhs]); //获取右边的寄存器
-        cout << "  xor\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
+        assert(binary.rhs->kind.tag != KOOPA_RVT_INTEGER); // assert左右节点不是int值
+        rightreg = get_reg(binary.rhs);   //获取右边的寄存器
     }
-    cout << "  seqz\t" + eqregister + ", " + eqregister + '\n';
-    return;
+
+    switch (binary.op) // 根据指令类型判断当前指令的运算符
+    {
+    case KOOPA_RBO_EQ:
+        //使用xor和seqz指令完成 等值 判断
+        cout << "  xor\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
+        cout << "  seqz\t" + eqregister + ", " + eqregister + '\n';
+        break;
+    case KOOPA_RBO_NOT_EQ:
+        //使用xor和snez指令完成 不等 判断
+        cout << "  xor\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
+        cout << "  snez\t" + eqregister + ", " + eqregister + '\n';
+        break;
+    case KOOPA_RBO_OR:
+        //使用or和snez指令完成 或 判断
+        cout << "  or\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
+        //cout << "  snez\t" + eqregister + ", " + eqregister + '\n';
+        break;
+    case KOOPA_RBO_GT:
+        //大于使用 slt 指令,交换两操作数位置,一条语句直接结束
+        cout << "  slt\t" + eqregister + ", " + rightreg + ", " + leftreg + '\n';
+        break;
+    case KOOPA_RBO_LT:
+        //小于使用 slt 指令,一条语句直接结束
+        cout << "  slt\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
+        break;
+    case KOOPA_RBO_GE:
+        //>= 大于等于 先判断反命题: slt 判断 左 < 右, 再用异或 '1' 得到原命题
+        cout << "  slt\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
+        cout << "  xori\t" + eqregister + ", " + eqregister + ", 1\n";
+        break;
+    case KOOPA_RBO_LE:
+        //<= 小于等于,交换量操作数后, 与上面操作一致
+        cout << "  slt\t" + eqregister + ", " + rightreg + ", " + leftreg + '\n';
+        cout << "  xori\t" + eqregister + ", " + eqregister + ", 1\n";
+        break;
+    case KOOPA_RBO_AND:
+        // and使用三条指令
+        //cout << "  snez\t" + leftreg + ", " + leftreg + '\n';
+        //cout << "  snez\t" + rightreg + ", " + rightreg + '\n';
+        cout << "  and\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
+        break;
+    default: // 其他类型暂时遇不到
+        assert(false);
+    }
+    
 }
 
 void Visit_bin_double_reg(const koopa_raw_value_t &value)
 {
-    //cout << " 二者均为寄存器的指令" << endl;
+    //cout << " 算术指令" << endl;
     const auto &kind = value->kind;
     const auto binary = kind.data.binary;
     string bin_op; //当前指令的运算符
@@ -267,8 +312,9 @@ void Visit_bin_double_reg(const koopa_raw_value_t &value)
         assert(false);
     }
     string leftreg, rightreg;                            // 左右节点值
+    //cout<<"\n现在"<<register_num<<"\n";
     map_reg[value] = register_num++;                     // 为当前指令分配一个寄存器
-    string eqregister = "t" + to_string(map_reg[value]); // 定义当前指令的寄存器
+    string eqregister = get_reg(value); // 定义当前指令的寄存器
 
     if (binary.lhs->kind.tag == KOOPA_RVT_INTEGER)
     { //先处理左节点,左节点为int值
@@ -287,7 +333,7 @@ void Visit_bin_double_reg(const koopa_raw_value_t &value)
     else
     {
         assert(binary.lhs->kind.tag != KOOPA_RVT_INTEGER); // assert左节点不是int值
-        leftreg = "t" + to_string(map_reg[binary.lhs]);    //获取左边的寄存器
+        leftreg = get_reg(binary.lhs);    //获取左边的寄存器
     }
 
     if (binary.rhs->kind.tag == KOOPA_RVT_INTEGER)
@@ -298,8 +344,11 @@ void Visit_bin_double_reg(const koopa_raw_value_t &value)
         }
         else
         { //右节点为非0 int, li到当前寄存器
-            map_reg[value] = register_num++;              // 为当前指令再分配一个寄存器
-            eqregister = "t" + to_string(map_reg[value]); // 定义当前指令的寄存器
+            if(binary.lhs->kind.tag == KOOPA_RVT_INTEGER && binary.lhs->kind.data.integer.value != 0)
+            {
+                map_reg[value] = register_num++;              // 为当前指令再分配一个寄存器
+                eqregister = get_reg(value); // 定义当前指令的寄存器
+            }
             cout << "  li\t" << eqregister << ", ";
             Visit(binary.rhs);
             cout << endl;
@@ -309,7 +358,21 @@ void Visit_bin_double_reg(const koopa_raw_value_t &value)
     else
     {
         assert(binary.rhs->kind.tag != KOOPA_RVT_INTEGER); // assert左右节点不是int值
-        rightreg = "t" + to_string(map_reg[binary.rhs]);   //获取右边的寄存器
+        rightreg = get_reg(binary.rhs);   //获取右边的寄存器
     }
     cout << "  " + bin_op + '\t' + eqregister + ", " + leftreg + ", " + rightreg + "\n";
+}
+
+
+
+string get_reg(const koopa_raw_value_t &value)
+{
+    if(map_reg[value] > 6)
+    {                                               //当t0~t6用完时
+        return "a" + to_string(map_reg[value] - 7); // 用a0~a7
+    }
+    else
+    {
+        return "t" + to_string(map_reg[value]); // 获得当前指令的寄存器
+    }
 }
