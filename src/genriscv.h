@@ -38,7 +38,7 @@ void genriscv(string koopaIR)
   // 处理 raw program
   // ..
 
-   Visit(raw);
+  Visit(raw);
 
    // 处理完成, 释放 raw program builder 占用的内存
   // 注意, raw program 中所有的指针指向的内存均为 raw program builder 的内存
@@ -113,6 +113,9 @@ void Visit(const koopa_raw_value_t &value) {
     case KOOPA_RVT_INTEGER:
       // 访问 integer 指令
       Visit(kind.data.integer);
+      break;
+    case KOOPA_RVT_BINARY:
+      //Visit(kind.data.binary);
       break;
     default:
       // 其他类型暂时遇不到

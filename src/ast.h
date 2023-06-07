@@ -22,11 +22,12 @@ class CompUnitAST : public BaseAST
   void Dump(string& koopaIR) const override 
   {
     //std::cout << "CompUnitAST { ";
-    func_def->Dump(koopaIR);
+    //func_def->Dump(koopaIR);
     //std::cout << " }";
   }
   string cal(string& koopaIR) const override
   {
+    func_def->cal(koopaIR);
     return "";
   }
 };
@@ -41,16 +42,21 @@ class FuncDefAST : public BaseAST {
   void Dump(string& koopaIR) const override 
   {
     //std::cout << "FuncDefAST { ";
-    koopaIR += "fun @";
-    koopaIR += ident;
-    koopaIR += "(): ";
-    func_type->Dump(koopaIR);
+    //koopaIR += "fun @";
+    //koopaIR += ident;
+    //koopaIR += "(): ";
+    //func_type->Dump(koopaIR);
     //std::cout << ", " << ident << ", ";
-    block->Dump(koopaIR);
+    //block->Dump(koopaIR);
     //std::cout << " }";
   }
   string cal(string& koopaIR) const override
   {
+    koopaIR += "fun @";
+    koopaIR += ident;
+    koopaIR += "(): ";
+    func_type->cal(koopaIR);
+    block->cal(koopaIR);
     return "";
   }
 };
@@ -65,10 +71,11 @@ class FuncTypeAST : public BaseAST
             //std::cout << "FuncTypeAST { ";
             //std::cout << "int ";
             //std::cout << " }";
-            koopaIR += "i32";
+            //koopaIR += "i32";
         }
         string cal(string& koopaIR) const override
         {
+          koopaIR += "i32";
           return "";
         }
 };
@@ -90,6 +97,10 @@ class BlockAST : public BaseAST
         }
         string cal(string& koopaIR) const override
         {
+          koopaIR += "{\n";
+          koopaIR += "%entry:\n";
+          stmt->cal(koopaIR);
+          koopaIR += "\n}\n";
           return "";
         }
 };
@@ -110,6 +121,9 @@ class StmtAST : public BaseAST
         }
         string cal(string& koopaIR) const override
         {
+          string re = exp->cal(koopaIR);
+          koopaIR += "  ret ";
+          koopaIR += re;
           return "";
         }
 };

@@ -36,7 +36,7 @@ int main(int argc, const char *argv[])
 
   // dump koopa
   string koopaIR = "";
-  ast->Dump(koopaIR);
+  ast->cal(koopaIR);
   cout << endl;
 
   freopen(output, "w", stdout);
