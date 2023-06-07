@@ -89,11 +89,11 @@ class BlockAST : public BaseAST
         void Dump(string& koopaIR) const override
         {
             //std::cout << "BlockAST { ";
-            koopaIR += "{\n";
-            koopaIR += "%entry:\n";
-            stmt->Dump(koopaIR);
+            //koopaIR += "{\n";
+            //koopaIR += "%entry:\n";
+            //stmt->Dump(koopaIR);
             //std::cout << " }";
-            koopaIR +="\n}\n";
+            //koopaIR +="\n}\n";
         }
         string cal(string& koopaIR) const override
         {
@@ -112,9 +112,9 @@ class StmtAST : public BaseAST
         unique_ptr<BaseAST> exp;
         void Dump(string& koopaIR) const override
         {
-            string re = exp->cal(koopaIR);
-            koopaIR += "  ret ";
-            koopaIR += re;
+            //string re = exp->cal(koopaIR);
+            //koopaIR += "  ret ";
+            //koopaIR += re;
             //std::cout << "StmtAST { ";
             //std::cout <<" "<< number <<" ";
             //std::cout << " }";
@@ -131,15 +131,170 @@ class StmtAST : public BaseAST
 class ExpAST :public BaseAST
 {
     public:
-        unique_ptr<BaseAST> unaryexp;
+        unique_ptr<BaseAST> lorexp;
         void Dump(string& koopaIR) const override
         {
 
         }
         string cal(string& koopaIR) const override
         {
-          return unaryexp->cal(koopaIR);
+          return lorexp->cal(koopaIR);
         }
+};
+
+class LOrExp1AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> landexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        return landexp->cal(koopaIR);
+      }
+};
+
+class LOrExp2AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> lorexp;
+      unique_ptr<BaseAST> landexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+         string L = lorexp->cal(koopaIR);
+         string R = landexp->cal(koopaIR);
+         koopaIR += "%" + to_string(++cnt) + " = or " + L +", " + R + "\n";
+         cnt++;
+         koopaIR += "%" + to_string(cnt) + " = ne 0, %" + to_string(cnt-1) + "\n";        
+         return "%" + to_string(cnt);
+      }
+};
+
+class LAndExp1AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> eqexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        return eqexp->cal(koopaIR);
+      }
+};
+
+class LAndExp2AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> landexp;
+      unique_ptr<BaseAST> eqexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+       string L = landexp->cal(koopaIR);
+       string R = eqexp->cal(koopaIR);
+       koopaIR += "%" + to_string(++cnt) + " = ne 0, " + L + "\n";
+       koopaIR += "%" + to_string(++cnt) + " = ne 0, " + R + "\n";
+       cnt++;
+       koopaIR += "%" + to_string(cnt) + " = and %" + to_string(cnt-2) +", %" + to_string(cnt-1) + "\n";       
+       return "%" + to_string(cnt);
+      }
+};
+
+class EqExp1AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> relexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        return relexp->cal(koopaIR);
+      }
+};
+
+class EqExp2AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> eqexp;
+      string eqop;
+      unique_ptr<BaseAST> relexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        string L = eqexp->cal(koopaIR);
+        string R = relexp->cal(koopaIR);
+        switch(eqop[0])
+        {
+          case '=':
+          koopaIR += "%" + to_string(++cnt) + " = eq " + L +", " + R + "\n";
+          break;
+
+          case '!':
+          koopaIR += "%" + to_string(++cnt) + " = ne " + L +", " + R + "\n";
+          break;
+
+          default:
+          break;
+        }
+        return "%" + to_string(cnt);
+      }
+};
+
+class RelExp1AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> addexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        return addexp->cal(koopaIR);
+      }
+};
+
+class RelExp2AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> relexp;
+      string relop;
+      unique_ptr<BaseAST> addexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        string L = relexp->cal(koopaIR);
+        string R = addexp->cal(koopaIR);
+        if(relop == "<")
+          koopaIR += "%" + to_string(++cnt) + " = lt " + L +", " + R + "\n";
+        else if(relop == ">")
+          koopaIR += "%" + to_string(++cnt) + " = gt " + L +", " + R + "\n";
+        else if(relop == "<=")
+          koopaIR += "%" + to_string(++cnt) + " = le " + L +", " + R + "\n";
+        else 
+          koopaIR += "%" + to_string(++cnt) + " = ge " + L +", " + R + "\n";
+        
+        return "%" + to_string(cnt);
+      }
 };
 
 class UnaryExp1AST : public BaseAST
@@ -182,8 +337,102 @@ class UnaryExp2AST : public BaseAST
               default :
                 break;
              }
-             return "%"+to_string(cnt);
+             return "%" + to_string(cnt);
           }
+};
+
+class AddExp1AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> mulexp;
+      void Dump(string& koopaIR) const override
+      {
+        
+      }
+      string cal(string& koopaIR) const override
+      {
+        return mulexp->cal(koopaIR);
+      }
+};
+
+class AddExp2AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> addexp;
+      string unaryop;
+      unique_ptr<BaseAST> mulexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        string L = addexp->cal(koopaIR);
+        string R = mulexp->cal(koopaIR);
+        switch(unaryop[0])
+        {
+          case '+':
+          koopaIR += "%" + to_string(++cnt) + " = add " + L +", " + R + "\n";
+          break;
+
+          case '-':
+          koopaIR += "%" + to_string(++cnt) + " = sub " + L +", " + R + "\n";
+          break;
+
+          default :
+          break;
+        }
+        return "%" + to_string(cnt);
+      }
+};
+
+class MulExp1AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> unaryexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        return unaryexp->cal(koopaIR);
+      }
+};
+
+class MulExp2AST : public BaseAST
+{
+    public:
+      unique_ptr<BaseAST> mulexp;
+      string mulop;
+      unique_ptr<BaseAST> unaryexp;
+      void Dump(string& koopaIR) const override
+      {
+
+      }
+      string cal(string& koopaIR) const override
+      {
+        string L = mulexp->cal(koopaIR);
+        string R = unaryexp->cal(koopaIR);
+        switch(mulop[0])
+        {
+          case '*':
+          koopaIR += "%" + to_string(++cnt) + " = mul " + L +", " + R + "\n";
+          break;
+
+          case '/':
+          koopaIR += "%" + to_string(++cnt) + " = div " + L +", " + R + "\n";
+          break;
+
+          case '%':
+          koopaIR += "%" + to_string(++cnt) + " = mod " + L +", " + R + "\n";
+          break;
+
+          default :
+          break;
+        }
+        return "%" + to_string(cnt);
+      }
 };
 
 class PrimaryExp1AST : public BaseAST

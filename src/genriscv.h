@@ -286,7 +286,7 @@ void Visit_bin_double_reg(const koopa_raw_value_t &value)
     }
     else
     {
-        assert(binary.lhs->kind.tag != KOOPA_RVT_INTEGER); // assert左右节点不是int值
+        assert(binary.lhs->kind.tag != KOOPA_RVT_INTEGER); // assert左节点不是int值
         leftreg = "t" + to_string(map_reg[binary.lhs]);    //获取左边的寄存器
     }
 
