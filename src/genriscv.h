@@ -213,7 +213,7 @@ void Visit(const koopa_raw_binary_t &binary) {
   else if(binary.op == KOOPA_RBO_OR){
     cout << " or  t0, t0, t1" << endl;
   }
-  
+ 
 }
 // 访问对应类型指令的函数定义略
 // 视需求自行实现

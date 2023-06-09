@@ -7,12 +7,23 @@
 using namespace std;
 //基类
 extern int cnt;
+extern int STnum;
 struct Symbol
 {
   string type;
   int value;
 };
-extern map<string,Symbol> Table;
+typedef map<string,Symbol> Table;
+
+struct ST
+{
+  int num;   //第几个符号表
+  Table table;//表项
+  ST *fa;//父节点
+  vector<ST*> child;//儿子节点
+};
+extern ST *cur_st;
+
 
 class BaseAST
 {
@@ -142,8 +153,9 @@ class VarDef1AST: public BaseAST//没有初值
         string cal(string& koopaIR) const override
         {
           Symbol symbol = {"undef",0};
-          Table[ident] = symbol;
-          koopaIR += "@" + ident + " = alloc i32\n"; 
+          cur_st->table[ident] = symbol;
+
+          koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n"; 
           return "";
         }
         int compute() const override
@@ -165,14 +177,15 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
         {
           
           Symbol symbol = {"var",0};
-          koopaIR += "@" + ident + " = alloc i32\n";
+          cur_st->table[ident] = symbol;
+          koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n";
           string re = initval->cal(koopaIR);
           if(re[0] == '@')
           {
              koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
              re = "%" + to_string(cnt);
           }
-          koopaIR += "  store " + re + ", " + "@" + ident + "\n";
+          koopaIR += "  store " + re + ", " + "@" + ident + "_" +to_string(cur_st->num) + "\n";
           return "";
         }
         int compute() const override
@@ -229,8 +242,9 @@ class ConstDefAST: public BaseAST//常量定义，无任何语句产生
         string cal(string& koopaIR) const override
         {
           int ans = constinitval->compute();
+          
           Symbol symbol = {"const",ans};
-          Table[ident] = symbol;
+          cur_st->table[ident] = symbol;
           return "";
         }
         int compute() const override
@@ -300,7 +314,10 @@ class FuncDefAST : public BaseAST {
     koopaIR += ident;
     koopaIR += "(): ";
     func_type->cal(koopaIR);
+    koopaIR += "{\n";
+    koopaIR += "%entry:\n";
     block->cal(koopaIR);
+    koopaIR += "\n}\n";
     return "";
   }
   int compute() const override
@@ -349,13 +366,16 @@ class BlockAST : public BaseAST
         }
         string cal(string& koopaIR) const override
         {
-          koopaIR += "{\n";
-          koopaIR += "%entry:\n";
+          STnum++;
+          ST *now_st = new ST;
+          now_st->num = STnum;
+          now_st->fa = cur_st;
+          cur_st = now_st;
           for (int i = 0; i < blockitem_.size(); i++)
           { //遍历每一个item
               blockitem_[i]->cal(koopaIR);
           }
-          koopaIR += "\n}\n";
+          cur_st = cur_st->fa;
           return "";
         }
         int compute() const override
@@ -467,6 +487,83 @@ class Stmt2AST: public BaseAST//赋值 lval = exp 左面一定是变量
         }
 };
 
+class Stmt3AST :public BaseAST
+{
+    public:
+        
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class Stmt4AST :public BaseAST
+{
+    public:
+        unique_ptr<BaseAST> block;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          block->cal(koopaIR);
+          return "";
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class Stmt5AST :public BaseAST
+{
+    public:
+        
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class Stmt6AST :public BaseAST
+{
+    public:
+        unique_ptr<BaseAST> exp;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          exp->cal(koopaIR);
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
 class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常量或变量
 {
     public:
@@ -477,8 +574,10 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
         }
         string cal(string& koopaIR) const override
         {
-          
-          auto symbol = Table[ident];
+          ST *now_st = cur_st;
+          while(now_st->table.find(ident)==now_st->table.end()) now_st = now_st->fa;
+
+          auto symbol = now_st->table[ident];
           string re;
           
           if(symbol.type == "const")
@@ -487,13 +586,16 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
           }
           else
           {
-            re = "@" + ident;
+            re = "@" + ident + "_" + to_string(now_st->num);
           }
           return re;
         }
         int compute() const override
         {
-          return Table[ident].value;
+          ST *now_st = cur_st;
+          while(now_st->table.find(ident)==now_st->table.end()) now_st = now_st->fa;
+          auto symbol = now_st->table[ident];
+          return symbol.value;
         }
 };
 

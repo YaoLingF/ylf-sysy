@@ -260,6 +260,25 @@ Stmt
         ast->lval = unique_ptr<BaseAST>($1);
         ast->exp = unique_ptr<BaseAST>($3);
         $$ = ast;
+    }
+    | RETURN ';' {
+        auto ast = new Stmt3AST();
+        $$ = ast;
+    }
+    | Block {
+        auto ast = new Stmt4AST();
+        ast->block = unique_ptr<BaseAST>($1);
+        $$ = ast;
+
+    }
+    | ';' {//无意义
+        auto ast = new Stmt5AST();
+        $$ = ast;
+    }
+    | Exp ';' {//无意义
+        auto ast = new Stmt6AST();
+        ast->exp = unique_ptr<BaseAST>($1);
+        $$ = ast;
     };
 
 LVal

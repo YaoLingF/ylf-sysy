@@ -9,8 +9,8 @@
 #include "genriscv.h"
 using namespace std;
 int cnt = -1;
-map<string,Symbol> Table;
-
+int STnum = 0;
+ST *cur_st = NULL;//当前符号表
 // 声明 lexer 的输入, 以及 parser 函数
 // 为什么不引用 sysy.tab.hpp 呢? 因为首先里面没有 yyin 的定义
 // 其次, 因为这个文件不是我们自己写的, 而是被 Bison 生成出来的
