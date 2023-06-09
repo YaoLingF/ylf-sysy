@@ -34,8 +34,9 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 {LineComment}   { /* 忽略, 不做任何操作 */ }
 {BlockComment}  { /* 忽略, 不做任何操作 */ }
 
-"int"           { return INT; }
+"int"           { cerr<<"int";return INT; }
 "return"        { return RETURN; }
+"const"         { cerr<<"const";return CONST; }
 
 "<"             { return LT; }
 ">"             { return GT; }
@@ -47,13 +48,13 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 "||"            { return LOR; }
 
 
-{Identifier}    { yylval.str_val = new string(yytext); return IDENT; }
+{Identifier}    { yylval.str_val = new string(yytext); cerr<<*yylval.str_val;return IDENT; }
 
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Octal}         { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 {Hexadecimal}   { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
 
-.               { return yytext[0]; }
+.               { cerr<<yytext[0];return yytext[0]; }
 
 %%
 

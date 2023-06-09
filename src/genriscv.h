@@ -7,11 +7,13 @@
 using namespace std;
 int register_num = 0;
 map<koopa_raw_value_t, int> map_reg;
+
+map<koopa_raw_function_t, int> func_sp; // 记录每个函数占据栈的大小
+map<koopa_raw_value_t, int> inst_sp; // 记录栈中每条指令的位置
+int cur_sp = 0;
+koopa_raw_function_t cur_func;
 // 函数声明略
 // ...
-void genriscv();
-
-
 
 void Visit(const koopa_raw_program_t &program);
 void Visit(const koopa_raw_slice_t &slice);
@@ -20,10 +22,20 @@ void Visit(const koopa_raw_basic_block_t &bb);
 void Visit(const koopa_raw_value_t &value);
 void Visit(const koopa_raw_return_t &ret);
 void Visit(const koopa_raw_integer_t &integer);
-void Visit_binary(const koopa_raw_value_t &value);
+void Visit(const koopa_raw_binary_t &binary);
+void genriscv(string koopaIR);
+
+/*void Visit_binary(const koopa_raw_value_t &value);
 void Visit_bin_con(const koopa_raw_value_t &value);
-void Visit_bin_double_reg(const koopa_raw_value_t &value);
-string get_reg(const koopa_raw_value_t &value);
+void Visit_bin_double_reg(const koopa_raw_value_t &value);*/
+
+void Prologue(const koopa_raw_function_t &func);
+void Epilogue(const koopa_raw_function_t &func);
+void li_lw(const koopa_raw_value_t &value, string dest_reg);
+void sw(const koopa_raw_value_t &dest, string src_reg);
+void Visit(const koopa_raw_store_t &store);
+void Visit(const koopa_raw_load_t &load);
+//string get_reg(const koopa_raw_value_t &value);
 
 void genriscv(string koopaIR)
 { 
@@ -94,6 +106,24 @@ void Visit(const koopa_raw_function_t &func)
   cout << name.substr(1) << "\n";
   cout << name.substr(1) << ":\n";
   // cout << "function " << func->name << "visited" << endl;
+  for(size_t i = 0; i < func->bbs.len; ++ i)
+  {
+    koopa_raw_basic_block_t bb = (koopa_raw_basic_block_t) func->bbs.buffer[i];
+    for(size_t i = 0; i < bb->insts.len; ++ i)
+    {
+      koopa_raw_value_t inst = (koopa_raw_value_t) bb->insts.buffer[i];
+      if(inst->ty->tag != KOOPA_RTT_UNIT) 
+      {
+        inst_sp[inst] = cur_sp;
+        cur_sp += 4;
+      }
+    }
+  }
+
+  cur_sp = (cur_sp + 15) / 16 * 16;
+  func_sp[func] = cur_sp;
+  cur_func = func;
+  Prologue(func);
   Visit(func->bbs);
 }
 
@@ -118,8 +148,18 @@ void Visit(const koopa_raw_value_t &value) {
       // 访问 integer 指令
       Visit(kind.data.integer);
       break;
-    case KOOPA_RVT_BINARY://运算指令,哈希value代表将结果所在的寄存器哈希,用于以后调用
-      Visit_binary(value);
+     case KOOPA_RVT_BINARY:
+      Visit(kind.data.binary);
+      sw(value, "t0");
+      break;
+    case KOOPA_RVT_STORE:
+      Visit(kind.data.store);
+      break;
+    case KOOPA_RVT_LOAD:
+      Visit(kind.data.load);
+      sw(value, "t0");
+      break;
+    case KOOPA_RVT_ALLOC:
       break;
     default:
       // 其他类型暂时遇不到
@@ -127,25 +167,62 @@ void Visit(const koopa_raw_value_t &value) {
   }
 }
 
+void Visit(const koopa_raw_binary_t &binary) {
+  li_lw(binary.lhs, "t0");
+  li_lw(binary.rhs, "t1");
+  if(binary.op == KOOPA_RBO_EQ){
+    cout << " xor  t0, t0, t1" << endl;
+    cout << " seqz t0, t0" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_NOT_EQ){
+    cout << " xor  t0, t0, t1" << endl;
+    cout << " snez t0, t0" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_GT){
+    cout << " sgt  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_LT){
+    cout << " slt  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_GE){
+    cout << " slt  t0, t0, t1" << endl;
+    cout << " seqz  t0, t0" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_LE){
+    cout << " sgt  t0, t0, t1" << endl;
+    cout << " seqz  t0, t0" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_ADD){
+    cout << " add  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_SUB){
+    cout << " sub  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_MUL){
+    cout << " mul  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_DIV){
+    cout << " div  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_MOD){
+    cout << " rem  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_AND){
+    cout << " and  t0, t0, t1" << endl;
+  }
+  else if(binary.op == KOOPA_RBO_OR){
+    cout << " or  t0, t0, t1" << endl;
+  }
+  
+}
 // 访问对应类型指令的函数定义略
 // 视需求自行实现
 void Visit(const koopa_raw_return_t &ret)
 {
-    koopa_raw_value_t retval = ret.value;
-    const auto &kind = retval->kind;
-    if (kind.tag == KOOPA_RVT_INTEGER)
-    {                            // value指向int 数值
-        cout << "  li\ta0, "; //访问指令返回后面跟的为int数值, 直接放入a0中
-        Visit(ret.value);
-        cout << "\n";
-    }
-    else
-    { // value指向了上一条指令的结果寄存器
-        cout << "  mv a0, " + get_reg(ret.value) + "\n"; //将上一条指令的结果寄存器写入其中
-        // 写入
-        //cout << "return's last instrucions register=" << map_reg[ret.value] << endl;
-    }
-    cout << "  ret" << endl;
+    koopa_raw_value_t value = ret.value;
+    li_lw(value, "a0");
+    Epilogue(cur_func);
+    cout << " ret" << endl;
 }
 
 void Visit(const koopa_raw_integer_t &integer)
@@ -153,7 +230,7 @@ void Visit(const koopa_raw_integer_t &integer)
   cout << integer.value;
 }
 
-
+/*
 void Visit_binary(const koopa_raw_value_t &value)
 {
     // 根据指令类型判断后续需要如何访问
@@ -375,4 +452,49 @@ string get_reg(const koopa_raw_value_t &value)
     {
         return "t" + to_string(map_reg[value]); // 获得当前指令的寄存器
     }
+}*/
+
+void Prologue(const koopa_raw_function_t &func){
+  int sp = func_sp[func];
+  if(sp)
+  {
+    cout << " addi  sp, sp, " + to_string(-sp) << endl;
+  }
+}
+
+void Epilogue(const koopa_raw_function_t &func){
+  int sp = func_sp[func];
+  if(sp)
+  {
+    cout << " addi  sp, sp, " + to_string(sp) << endl;
+  }
+}
+
+void li_lw(const koopa_raw_value_t &value, string dest_reg="t0"){
+  if(inst_sp.find(value) == inst_sp.end()){
+    int number;
+    number = value->kind.data.integer.value;
+    cout << " li " << dest_reg << ", " << to_string(number) << endl;
+  }
+  else{ // 不是立即数，%0是指针指向对应指令
+    int cur_inst_sp = inst_sp[value];
+    cout << " lw " << dest_reg << ", " << to_string(cur_inst_sp) << "(sp)" << endl;
+  }
+}
+
+void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
+  int cur_inst_sp = inst_sp[dest];
+  cout << " sw " << src_reg << ", " << to_string(cur_inst_sp) << "(sp)" << endl;
+}
+
+void Visit(const koopa_raw_store_t &store){//store 临时/常量 变量
+  koopa_raw_value_t value = store.value;
+  koopa_raw_value_t dest = store.dest;
+  li_lw(value, "t0");
+  sw(dest, "t0");
+}
+
+void Visit(const koopa_raw_load_t &load){//临时 = load 变量
+  koopa_raw_value_t src = load.src;
+  li_lw(src, "t0");//先加载到t0
 }

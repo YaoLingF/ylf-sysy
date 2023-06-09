@@ -7,6 +7,7 @@
 %{
 
 #include <iostream>
+#include <vector>
 #include <memory>
 #include <string>
 #include "ast.h"
@@ -32,19 +33,24 @@ using namespace std;
   std::string *str_val;
   int int_val;
   BaseAST *ast_val;
+  vector<BaseAST*> *vec_val;
 }
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN LE GE EQ NE LAND LOR LT GT
+%token INT RETURN CONST LE GE EQ NE LAND LOR LT GT
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Block Stmt PrimaryExp UnaryExp Exp
+%type <ast_val> FuncDef FuncType Block Decl Stmt PrimaryExp UnaryExp Exp
 %type <ast_val> AddExp MulExp LOrExp LAndExp EqExp RelExp
+%type <ast_val> VarDecl VarDef InitVal BType 
+%type <ast_val> ConstDecl ConstDef ConstInitVal ConstExp
+%type <ast_val> BlockItem LVal
 %type <int_val> Number
 %type <str_val> UnaryOp MulOp RelOp EqOp
+%type <vec_val> VarDef_ ConstDef_ BlockItem_
 
 %%
 
@@ -61,6 +67,126 @@ CompUnit
     }
     ;
 
+Decl 
+    : ConstDecl {
+        auto ast = new Decl1AST();
+        ast->constdecl = unique_ptr<BaseAST>($1);
+        $$ = ast;
+
+    }
+    | VarDecl {
+        
+        auto ast = new Decl2AST();
+        ast->vardecl = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    };
+    
+
+ConstDecl
+    : CONST BType ConstDef_ ';' {
+        auto ast = new ConstDeclAST();
+        ast->btype = unique_ptr<BaseAST>($2);
+        if($3) ast->constdef_.assign(($3)->begin(),($3)->end());
+        $$ = ast;
+
+    };
+
+VarDecl
+    : BType VarDef_ ';' {
+        auto ast = new VarDeclAST();
+        ast->btype = unique_ptr<BaseAST>($1);
+        if($2)ast->vardef_.assign(($2)->begin(),($2)->end());
+        $$ = ast;
+
+    };
+
+VarDef_
+    : VarDef_ ',' VarDef {
+        auto vec = new vector<BaseAST*>;
+        if($1) vec->assign(($1)->begin(),($1)->end());
+        vec->push_back($3);
+        $$ = vec;
+    }
+    | VarDef {
+        auto vec = new vector<BaseAST*>;
+        vec->push_back($1);
+        $$ = vec;
+    };
+
+
+
+
+VarDef
+    : IDENT {
+        auto ast = new VarDef1AST();
+        ast->ident = *unique_ptr<string>($1);
+        $$ = ast;
+
+    }
+    | IDENT '=' InitVal {
+
+        auto ast = new VarDef2AST();
+        ast->ident = *unique_ptr<string>($1);
+        ast->initval = unique_ptr<BaseAST>($3);
+        $$ = ast;
+    };
+
+
+InitVal
+    : Exp {
+        auto ast = new InitValAST();
+        ast->exp = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+
+BType
+    : INT {
+        auto ast = new BTypeAST();
+        ast->type = "int";
+        $$ = ast;
+    };
+
+ConstDef_
+    : ConstDef_ ',' ConstDef {
+        auto vec = new vector<BaseAST*>;
+        if($1) vec->assign(($1)->begin(),($1)->end());
+        vec->push_back($3);
+        $$ = vec;
+
+    }
+    | ConstDef {
+        auto vec = new vector<BaseAST*>;
+        vec->push_back($1);
+        $$ = vec;
+
+    };
+
+
+ConstDef
+    : IDENT '=' ConstInitVal {
+        auto ast = new ConstDefAST();
+        ast->ident = *unique_ptr<string>($1);
+        ast->constinitval = unique_ptr<BaseAST>($3);
+        $$ = ast;
+
+    };
+
+ConstInitVal
+    : ConstExp {
+        auto ast = new ConstInitValAST();
+        ast->constexp = unique_ptr<BaseAST>($1);
+        $$ = ast;
+
+    }
+
+ConstExp
+    : Exp {
+        auto ast = new ConstExpAST();
+        ast->exp = unique_ptr<BaseAST>($1);
+        $$ = ast;
+
+    };
+
 // FuncDef ::= FuncType IDENT '(' ')' Block;
 // 我们这里可以直接写 '(' 和 ')', 因为之前在 lexer 里已经处理了单个字符的情况
 // 解析完成后, 把这些符号的结果收集起来, 然后拼成一个新的字符串, 作为结果返回
@@ -72,7 +198,8 @@ CompUnit
 // 虽然此处你看不出用 unique_ptr 和手动 delete 的区别, 但当我们定义了 AST 之后
 // 这种写法会省下很多内存管理的负担
 FuncDef
-    : FuncType IDENT '(' ')' Block{
+    : FuncType IDENT '(' ')' Block {
+        cerr<<"func";
         auto ast = new FuncDefAST();
         ast->func_type = unique_ptr<BaseAST>($1);
         ast->ident = *unique_ptr<string>($2);
@@ -89,17 +216,58 @@ FuncType
     };
 
 Block
-    : '{' Stmt '}'{
+    : '{' BlockItem_ '}'{
         auto ast = new BlockAST();
-        ast->stmt = unique_ptr<BaseAST>($2);
+        if($2) ast->blockitem_.assign(($2)->begin(),($2)->end());
         $$ = ast;
+    };
+
+BlockItem_
+    : BlockItem_ BlockItem {
+        auto vec = new vector<BaseAST*>;
+        if($1) vec->assign(($1)->begin(),($1)->end());
+        vec->push_back($2);
+        $$ = vec;
+
+    }
+    | {
+        $$ = NULL;
+    };
+
+BlockItem
+    : Stmt {
+        
+        auto ast = new BlockItem1AST();
+        ast->stmt = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    | Decl {
+        
+        auto ast = new BlockItem2AST();
+        ast->decl = unique_ptr<BaseAST>($1);
+        $$ = ast;
+
     };
 
 Stmt
     : RETURN Exp ';'{
-        auto ast = new StmtAST();
+        auto ast = new Stmt1AST();
         ast->exp = unique_ptr<BaseAST>($2);
         $$ = ast;
+    }
+    | LVal '=' Exp ';' {
+        auto ast = new Stmt2AST();
+        ast->lval = unique_ptr<BaseAST>($1);
+        ast->exp = unique_ptr<BaseAST>($3);
+        $$ = ast;
+    };
+
+LVal
+    : IDENT {
+        auto ast = new LValAST();
+        ast->ident = *unique_ptr<string>($1);
+        $$ = ast;
+
     };
 
 Exp
@@ -237,6 +405,12 @@ PrimaryExp
         $$ = ast;
        
     }
+    | LVal {
+        auto ast = new PrimaryExp3AST();
+        ast->lval = unique_ptr<BaseAST>($1);
+        $$ = ast;
+
+    };
 
 UnaryOp
     : '+' {
@@ -283,6 +457,6 @@ Number
 // 定义错误处理函数, 其中第二个参数是错误信息
 // parser 如果发生错误 (例如输入的程序出现了语法错误), 就会调用这个函数
 void yyerror(unique_ptr<BaseAST> &ast, const char *s) {
-  cerr << "error: " << s << endl;
+  cout << "error: " << s << endl;
 }
 
