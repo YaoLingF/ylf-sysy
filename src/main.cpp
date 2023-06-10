@@ -8,9 +8,12 @@
 #include "ast.h"
 #include "genriscv.h"
 using namespace std;
-int cnt = -1;
-int STnum = 0;
+int cnt = -1;//虚拟寄存器个数
+int STnum = 0;//符号表个数
+int IFnum = 0;//if个数
+int WHILEnum = 0;//while个数
 ST *cur_st = NULL;//当前符号表
+WT *cur_wh = NULL;//while表
 // 声明 lexer 的输入, 以及 parser 函数
 // 为什么不引用 sysy.tab.hpp 呢? 因为首先里面没有 yyin 的定义
 // 其次, 因为这个文件不是我们自己写的, 而是被 Bison 生成出来的
@@ -18,7 +21,15 @@ ST *cur_st = NULL;//当前符号表
 // 看起来会很烦人, 于是干脆采用这种看起来 dirty 但实际很有效的手段
 extern FILE *yyin;
 extern int yyparse(unique_ptr<BaseAST> &ast);
-
+bool check(string s)
+{
+  for(int i = s.size()-1; s[i]!=':'; i--)
+  {
+    if(s.substr(i,3) == "ret") return true;
+    if(s.substr(i,4) == "jump") return true;
+  }
+  return false;
+}
 int main(int argc, const char *argv[])
 {
   
@@ -40,7 +51,7 @@ int main(int argc, const char *argv[])
   assert(!ret);
 
   // dump koopa
- 
+
   string koopaIR = "";
   ast->cal(koopaIR);
   cout << endl;
@@ -48,7 +59,7 @@ int main(int argc, const char *argv[])
   freopen(output, "w", stdout);
   if (mode[1] == 'k') // koopa
   {
-    cout << koopaIR;
+    std::cout << koopaIR;
   }
   else // risc-v
   {

@@ -36,9 +36,10 @@ using namespace std;
   vector<BaseAST*> *vec_val;
 }
 
+//终结符
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN CONST LE GE EQ NE LAND LOR LT GT IF ELSE
+%token INT RETURN CONST LE GE EQ NE LAND LOR LT GT IF ELSE WHILE BREAK CONTINUE
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
@@ -279,7 +280,7 @@ UnMatchStmt
         ast->unmatch = unique_ptr<BaseAST>($7);
         $$ = ast;
     }
-    | WHILE '( ' Exp ')' UnMatchStmt {
+    | WHILE '(' Exp ')' UnMatchStmt {
         auto ast = new UnMatchStmt3AST();
         ast->exp = unique_ptr<BaseAST>($3);
         ast->unmatch = unique_ptr<BaseAST>($5);
@@ -324,12 +325,22 @@ MatchStmt
         ast->match1 = unique_ptr<BaseAST>($5);
         ast->match2 = unique_ptr<BaseAST>($7);
         $$ = ast;
-    };
+    }
     | WHILE '(' Exp ')' MatchStmt {
         auto ast = new MatchStmt8AST();
         ast->exp = unique_ptr<BaseAST>($3);
-        ast->matchstmt = unique_ptr<BaseAST>($5);
+        ast->match = unique_ptr<BaseAST>($5);
         $$ = ast;
+    }
+    | BREAK ';' {
+        auto ast = new MatchStmt9AST();
+        $$ = ast;
+
+    }
+    | CONTINUE ';' {
+        auto ast = new MatchStmt10AST();
+        $$ = ast;
+
     };
 
 LVal

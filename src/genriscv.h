@@ -37,6 +37,9 @@ void Visit(const koopa_raw_store_t &store);
 void Visit(const koopa_raw_load_t &load);
 //string get_reg(const koopa_raw_value_t &value);
 
+void Visit(const koopa_raw_branch_t &branch);
+void Visit(const koopa_raw_jump_t &jump);
+
 void genriscv(string koopaIR)
 { 
   const char* str = koopaIR.c_str();
@@ -132,6 +135,8 @@ void Visit(const koopa_raw_basic_block_t &bb) {
   // 执行一些其他的必要操作
   // ...
   // 访问所有指令
+  string re = bb->name +1;
+  if(re != "entry") cout<< re << ":\n";
   Visit(bb->insts);
 }
 
@@ -161,8 +166,13 @@ void Visit(const koopa_raw_value_t &value) {
       break;
     case KOOPA_RVT_ALLOC:
       break;
-    default:
-      // 其他类型暂时遇不到
+    case KOOPA_RVT_BRANCH:
+      Visit(kind.data.branch);
+      break;
+    case KOOPA_RVT_JUMP:
+      Visit(kind.data.jump);
+      break;
+    default:// 其他类型暂时遇不到
       assert(false);
   }
 }
@@ -497,4 +507,17 @@ void Visit(const koopa_raw_store_t &store){//store 临时/常量 变量
 void Visit(const koopa_raw_load_t &load){//临时 = load 变量
   koopa_raw_value_t src = load.src;
   li_lw(src, "t0");//先加载到t0
+}
+
+void Visit(const koopa_raw_branch_t &branch) {
+  string label_true = branch.true_bb->name + 1;
+  string label_false = branch.false_bb->name + 1;
+  li_lw(branch.cond, "t0");
+  cout << "  bnez t0, "  << label_true << endl;
+  cout << "  j " << label_false << endl;
+}
+
+void Visit(const koopa_raw_jump_t &jump) {
+  string label_target = jump.target->name + 1;
+  cout << "  j " << label_target << endl;
 }

@@ -37,7 +37,8 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 "int"           { cerr<<"int";return INT; }
 "return"        { return RETURN; }
 "const"         { cerr<<"const";return CONST; }
-
+"if"            { return IF; }
+"else"          { return ELSE; }
 "<"             { return LT; }
 ">"             { return GT; }
 "<="            { return LE; }
@@ -46,8 +47,9 @@ Hexadecimal   0[xX][0-9a-fA-F]+
 "!="            { return NE; }
 "&&"            { return LAND; }
 "||"            { return LOR; }
-
-
+"while"         { return WHILE; }
+"break"         { return BREAK; }
+"continue"      { return CONTINUE; }
 {Identifier}    { yylval.str_val = new string(yytext); cerr<<*yylval.str_val;return IDENT; }
 
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }

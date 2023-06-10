@@ -8,6 +8,10 @@ using namespace std;
 //基类
 extern int cnt;
 extern int STnum;
+extern int IFnum;
+extern int WHILEnum;
+extern bool check(string s);
+
 struct Symbol
 {
   string type;
@@ -24,7 +28,12 @@ struct ST
 };
 extern ST *cur_st;
 
-
+struct WT
+{
+  int num;
+  WT *fa;
+};
+extern WT *cur_wh;
 class BaseAST
 {
  public:
@@ -309,7 +318,6 @@ class FuncDefAST : public BaseAST {
   }
   string cal(string& koopaIR) const override
   {
-    
     koopaIR += "fun @";
     koopaIR += ident;
     koopaIR += "(): ";
@@ -373,6 +381,7 @@ class BlockAST : public BaseAST
           cur_st = now_st;
           for (int i = 0; i < blockitem_.size(); i++)
           { //遍历每一个item
+              if(check(koopaIR)) break;
               blockitem_[i]->cal(koopaIR);
           }
           cur_st = cur_st->fa;
@@ -422,8 +431,172 @@ class BlockItem2AST: public BaseAST
         }
 };
 
+class Stmt1AST :public BaseAST
+{
+    public:
+        unique_ptr<BaseAST> match;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          match->cal(koopaIR);
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class Stmt2AST :public BaseAST
+{
+    public:
+        unique_ptr<BaseAST> unmatch;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          unmatch->cal(koopaIR);
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class UnMatchStmt1AST :public BaseAST//if(exp) stmt;
+{
+    public:
+        unique_ptr<BaseAST> exp;
+        unique_ptr<BaseAST> stmt;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          IFnum++;
+          string then_ = "%then_" + to_string(IFnum);
+          string end_ = "%end_" + to_string(IFnum);
+          string re = exp->cal(koopaIR);
+          if(re[0]=='@')//变量
+          {
+            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+            koopaIR += "  br %" + to_string(cnt) + ", " + then_ + ", " + end_ + "\n";
+          }
+          else
+          {
+            koopaIR += "  br " + re + ", " + then_ + ", " + end_ + "\n";
+          }
+          koopaIR += then_ + ":\n";
+          stmt->cal(koopaIR);
+          if(!check(koopaIR)) koopaIR += "  jump " + end_ + "\n";
+          koopaIR += end_ + ":\n";
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class UnMatchStmt2AST :public BaseAST //if(exp) match else unmatch
+{
+    public:
+        unique_ptr<BaseAST> exp;
+        unique_ptr<BaseAST> match;
+        unique_ptr<BaseAST> unmatch;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          IFnum++;
+          string then_ = "%then_" + to_string(IFnum);
+          string else_ = "%else_" + to_string(IFnum);
+          string end_ = "%end_" + to_string(IFnum); 
+          string re = exp->cal(koopaIR);
+          if(re[0]=='@')//变量
+          {
+            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+            koopaIR += "  br %" + to_string(cnt) + ", " + then_ + ", " + else_ + "\n";
+          }
+          else
+          {
+            koopaIR += "  br " + re + ", " + then_ + ", " + else_ + "\n";
+          }
+          koopaIR += then_ + ":\n";
+          match->cal(koopaIR);
+          if(!check(koopaIR)) koopaIR += "jump " + end_ + "\n";
+          koopaIR += else_ + ":\n";
+          unmatch->cal(koopaIR);
+          if(!check(koopaIR)) koopaIR += "jump " + end_ + "\n";
+          koopaIR += end_ + ":\n";
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class UnMatchStmt3AST :public BaseAST//while(exp) unmatch
+{
+    public:
+        unique_ptr<BaseAST> exp;
+        unique_ptr<BaseAST> unmatch;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          WHILEnum++;
+          WT *now_wh = new WT;
+          now_wh->num = WHILEnum;
+          now_wh->fa = cur_wh;
+          cur_wh = now_wh;
+          string whilecond_ = "%whilecond_" + to_string(WHILEnum);
+          string whilebody_ = "%whilebody_" + to_string(WHILEnum);
+          string end_ = "%whileend_" + to_string(WHILEnum);
+          koopaIR += "jump " + whilecond_ + "\n";
+          koopaIR += whilecond_ + ":\n";
+          string re = exp->cal(koopaIR);
+          if(re[0]=='@')//变量
+          {
+            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+            koopaIR += "  br %" + to_string(cnt) + ", " + whilebody_ + ", " + end_ + "\n";
+          }
+          else
+          {
+            koopaIR += "  br " + re + ", " + whilebody_ + ", " + end_ + "\n";
+          }
+          koopaIR += whilebody_ + ":\n";
+          unmatch->cal(koopaIR);
+          if(!check(koopaIR)) koopaIR += "jump " + whilecond_ + "\n";
+          koopaIR += end_ + ":\n";
+          cur_wh = cur_wh->fa;
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
 // StmtAST 也是 BaseAST
-class Stmt1AST : public BaseAST//return exp
+class MatchStmt1AST : public BaseAST//return exp
 {
     public:
         unique_ptr<BaseAST> exp;
@@ -446,7 +619,7 @@ class Stmt1AST : public BaseAST//return exp
           }
           else
           {
-            koopaIR += "  ret " + re;
+            koopaIR += "  ret " + re + "\n";
           }
           return "";
         }
@@ -456,7 +629,7 @@ class Stmt1AST : public BaseAST//return exp
         }
 };
 
-class Stmt2AST: public BaseAST//赋值 lval = exp 左面一定是变量
+class MatchStmt2AST: public BaseAST//赋值 lval = exp 左面一定是变量
 {
     public:
         std::unique_ptr<BaseAST> lval;
@@ -487,7 +660,7 @@ class Stmt2AST: public BaseAST//赋值 lval = exp 左面一定是变量
         }
 };
 
-class Stmt3AST :public BaseAST
+class MatchStmt3AST :public BaseAST
 {
     public:
         
@@ -506,7 +679,7 @@ class Stmt3AST :public BaseAST
         }
 };
 
-class Stmt4AST :public BaseAST
+class MatchStmt4AST :public BaseAST
 {
     public:
         unique_ptr<BaseAST> block;
@@ -525,7 +698,7 @@ class Stmt4AST :public BaseAST
         }
 };
 
-class Stmt5AST :public BaseAST
+class MatchStmt5AST :public BaseAST
 {
     public:
         
@@ -544,7 +717,7 @@ class Stmt5AST :public BaseAST
         }
 };
 
-class Stmt6AST :public BaseAST
+class MatchStmt6AST :public BaseAST
 {
     public:
         unique_ptr<BaseAST> exp;
@@ -555,6 +728,132 @@ class Stmt6AST :public BaseAST
         string cal(string& koopaIR) const override
         {
           exp->cal(koopaIR);
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class MatchStmt7AST :public BaseAST//if(exp) match1 else match2
+{
+    public:
+        unique_ptr<BaseAST> exp;
+        unique_ptr<BaseAST> match1;
+        unique_ptr<BaseAST> match2;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          IFnum++;
+          string then_ = "%then_" + to_string(IFnum);
+          string else_ = "%else_" + to_string(IFnum);
+          string end_ = "%end_" + to_string(IFnum); 
+          string re = exp->cal(koopaIR);
+          if(re[0]=='@')//变量
+          {
+            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+            koopaIR += "  br %" + to_string(cnt) + ", " + then_ + ", " + else_ + "\n";
+          }
+          else
+          {
+            koopaIR += "  br " + re + ", " + then_ + ", " + else_ + "\n";
+          }
+          koopaIR += then_ + ":\n";
+          match1->cal(koopaIR);
+          if(!check(koopaIR)) koopaIR += "jump " + end_ + "\n";
+          koopaIR += else_ + ":\n";
+          match2->cal(koopaIR);
+          if(!check(koopaIR)) koopaIR += "jump " + end_ + "\n";
+          koopaIR += end_ + ":\n";
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class MatchStmt8AST :public BaseAST//while(exp) match
+{
+    public:
+        unique_ptr<BaseAST> exp;
+        unique_ptr<BaseAST> match;
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          WHILEnum++;
+          WT *now_wh = new WT;
+          now_wh->num = WHILEnum;
+          now_wh->fa = cur_wh;
+          cur_wh = now_wh;
+          string whilecond_ = "%whilecond_" + to_string(WHILEnum);
+          string whilebody_ = "%whilebody_" + to_string(WHILEnum);
+          string end_ = "%whileend_" + to_string(WHILEnum);
+          koopaIR += "jump " + whilecond_ + "\n";
+          koopaIR += whilecond_ + ":\n";
+          string re = exp->cal(koopaIR);
+          if(re[0]=='@')//变量
+          {
+            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+            koopaIR += "  br %" + to_string(cnt) + ", " + whilebody_ + ", " + end_ + "\n";
+          }
+          else
+          {
+            koopaIR += "  br " + re + ", " + whilebody_ + ", " + end_ + "\n";
+          }
+          koopaIR += whilebody_ + ":\n";
+          match->cal(koopaIR);
+          if(!check(koopaIR)) koopaIR += "jump " + whilecond_ + "\n";
+          koopaIR += end_ + ":\n";
+          cur_wh = cur_wh->fa;
+          return "";
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class MatchStmt9AST :public BaseAST//break;
+{
+    public:
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          string end_ = "%whileend_" + to_string(cur_wh->num);
+          koopaIR += "jump " + end_ + "\n";
+          return "";
+
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class MatchStmt10AST :public BaseAST//continue
+{
+    public:
+        void Dump(string& koopaIR) const override
+        {
+
+        }
+        string cal(string& koopaIR) const override
+        {
+          string whilecond_ = "%whilecond_" + to_string(cur_wh->num);
+          koopaIR += "jump " + whilecond_ + "\n";
           return "";
 
         }
