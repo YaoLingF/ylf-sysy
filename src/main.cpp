@@ -12,7 +12,8 @@ int cnt = -1;//虚拟寄存器个数
 int STnum = 0;//符号表个数
 int IFnum = 0;//if个数
 int WHILEnum = 0;//while个数
-ST *cur_st = NULL;//当前符号表
+map<string,string> globalF;//函数类型
+ST *cur_st = new ST;//当前符号表
 WT *cur_wh = NULL;//while表
 // 声明 lexer 的输入, 以及 parser 函数
 // 为什么不引用 sysy.tab.hpp 呢? 因为首先里面没有 yyin 的定义
@@ -32,7 +33,9 @@ bool check(string s)
 }
 int main(int argc, const char *argv[])
 {
-  
+  cur_st->num = 0;
+  cur_st->fa = NULL;
+ 
   // 解析命令行参数. 测试脚本/评测平台要求你的编译器能接收如下参数:
   // compiler 模式 输入文件 -o 输出文件
   assert(argc == 5);
@@ -49,10 +52,22 @@ int main(int argc, const char *argv[])
 
   auto ret = yyparse(ast);
   assert(!ret);
-
+  //return 0;
   // dump koopa
 
   string koopaIR = "";
+  koopaIR += "decl @getint(): i32\n";
+  koopaIR += "decl @getch(): i32\n";
+  koopaIR += "decl @getarray(*i32): i32\n";
+  koopaIR += "decl @putint(i32)\n";
+  koopaIR += "decl @putch(i32)\n";
+  koopaIR += "decl @putarray(i32, *i32)\n";
+  koopaIR += "decl @starttime()\n";
+  koopaIR += "decl @stoptime()\n";
+  globalF["getint"] = "int";
+  globalF["putint"] = "void";
+  globalF["getch"]  = "int";
+  globalF["putch"]  = "void";
   ast->cal(koopaIR);
   cout << endl;
 

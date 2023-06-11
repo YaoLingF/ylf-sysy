@@ -11,7 +11,7 @@ extern int STnum;
 extern int IFnum;
 extern int WHILEnum;
 extern bool check(string s);
-
+extern map<string,string> globalF;
 struct Symbol
 {
   string type;
@@ -47,8 +47,7 @@ class BaseAST
 class CompUnitAST : public BaseAST 
 {
  public:
-  std::unique_ptr<BaseAST> func_def;
-
+  vector<BaseAST*> compunits;
   void Dump(string& koopaIR) const override 
   {
     //std::cout << "CompUnitAST { ";
@@ -57,7 +56,10 @@ class CompUnitAST : public BaseAST
   }
   string cal(string& koopaIR) const override
   {
-    func_def->cal(koopaIR);
+    for (int i = 0; i < compunits.size(); i++)
+    { //遍历每一个item
+        compunits[i]->cal(koopaIR);
+    }
     return "";
   }
   int compute() const override
@@ -66,7 +68,7 @@ class CompUnitAST : public BaseAST
   }
 };
 
-class Decl1AST: public BaseAST
+class Decl1AST: public BaseAST//常量
 {
     public:
         std::unique_ptr<BaseAST> constdecl;
@@ -86,7 +88,7 @@ class Decl1AST: public BaseAST
         
 };
 
-class Decl2AST: public BaseAST
+class Decl2AST: public BaseAST//变量
 {
     public:
         std::unique_ptr<BaseAST> vardecl;
@@ -108,7 +110,7 @@ class Decl2AST: public BaseAST
 class ConstDeclAST: public BaseAST
 {
     public:
-        std::unique_ptr<BaseAST> btype;
+        std::string btype;
         vector<BaseAST*> constdef_;
         void Dump(string& koopaIR) const override
         {
@@ -131,7 +133,7 @@ class ConstDeclAST: public BaseAST
 class VarDeclAST: public BaseAST
 {
     public:
-        std::unique_ptr<BaseAST> btype;
+        std::string btype;
         vector<BaseAST*> vardef_;
         void Dump(string& koopaIR) const override
         {
@@ -163,8 +165,14 @@ class VarDef1AST: public BaseAST//没有初值
         {
           Symbol symbol = {"undef",0};
           cur_st->table[ident] = symbol;
-
-          koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n"; 
+          if(cur_st->num == 0)
+          {
+            koopaIR += "global @" + ident + "_0 = alloc i32, zeroinit\n";
+          }
+          else
+          {
+            koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n"; 
+          }
           return "";
         }
         int compute() const override
@@ -187,6 +195,13 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
           
           Symbol symbol = {"var",0};
           cur_st->table[ident] = symbol;
+          if(cur_st->num == 0)//全局变量,有初值
+          {
+             int ans = initval->compute();
+             koopaIR += "global @" + ident + "_0 = alloc i32, " + to_string(ans) + "\n";
+          }
+          else
+          {
           koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n";
           string re = initval->cal(koopaIR);
           if(re[0] == '@')
@@ -195,6 +210,7 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
              re = "%" + to_string(cnt);
           }
           koopaIR += "  store " + re + ", " + "@" + ident + "_" +to_string(cur_st->num) + "\n";
+          }
           return "";
         }
         int compute() const override
@@ -217,10 +233,10 @@ class InitValAST: public BaseAST
         }
         int compute() const override
         {
-          return 0;
+          return exp->compute();
         }
 };
-
+/*
 class BTypeAST: public BaseAST
 {
     public:
@@ -231,13 +247,14 @@ class BTypeAST: public BaseAST
         }
         string cal(string& koopaIR) const override
         {
+          if(type == "int") koopaIR += ": i32 ";
           return "";
         }
         int compute() const override
         {
           return 0;
         }
-};
+};*/
 
 class ConstDefAST: public BaseAST//常量定义，无任何语句产生
 {
@@ -299,9 +316,9 @@ class ConstExpAST: public BaseAST
 };
 
 // FuncDef 也是 BaseAST
-class FuncDefAST : public BaseAST {
+class FuncDef1AST : public BaseAST {//无参数
  public:
-  std::unique_ptr<BaseAST> func_type;
+  std::string func_type;
   std::string ident;
   std::unique_ptr<BaseAST> block;
 
@@ -318,14 +335,88 @@ class FuncDefAST : public BaseAST {
   }
   string cal(string& koopaIR) const override
   {
+    globalF[ident] = func_type;
+    //koopaIR += "\n" + ident + " " + func_type + "\n";
+    STnum = 0;
     koopaIR += "fun @";
     koopaIR += ident;
-    koopaIR += "(): ";
-    func_type->cal(koopaIR);
+    koopaIR += "()";
+    if(func_type == "int") koopaIR += ": i32 ";
     koopaIR += "{\n";
     koopaIR += "%entry:\n";
+
+    STnum++;
+    ST *now_st = new ST;
+    now_st->num = STnum;
+    now_st->fa = cur_st;
+    cur_st = now_st;
     block->cal(koopaIR);
+    if(!check(koopaIR)) koopaIR += "  ret\n";
     koopaIR += "\n}\n";
+    //cerr<<"this is main\n";
+    cur_st = cur_st->fa;
+    return "";
+  }
+  int compute() const override
+  {
+     return 0;
+  }
+};
+
+class FuncDef2AST : public BaseAST {//有参数
+ public:
+  std::string func_type;
+  std::string ident;
+  vector<BaseAST*> funcfparams;
+  std::unique_ptr<BaseAST> block;
+  mutable vector<string> param;
+  void Dump(string& koopaIR) const override 
+  {
+    //std::cout << "FuncDefAST { ";
+    //koopaIR += "fun @";
+    //koopaIR += ident;
+    //koopaIR += "(): ";
+    //func_type->Dump(koopaIR);
+    //std::cout << ", " << ident << ", ";
+    //block->Dump(koopaIR);
+    //std::cout << " }";
+  }
+  string cal(string& koopaIR) const override
+  {
+    //cerr<<"\n\n";
+    globalF[ident] = func_type;
+    //koopaIR += "\n" + ident + " " + func_type + "\n";
+    STnum = 0;
+    koopaIR += "fun @";
+    koopaIR += ident;
+    koopaIR += "(";
+    for (int i = 0; i < funcfparams.size(); i++)
+    { //遍历每一个参数
+        param.push_back(funcfparams[i]->cal(koopaIR));//参数名字(ident)
+        if((i+1)!=funcfparams.size()) koopaIR += ", ";
+    }
+    koopaIR += ")";
+    if(func_type == "int") koopaIR += ": i32 ";
+    koopaIR += "{\n";
+    koopaIR += "%entry:\n";
+
+    STnum++;
+    ST *now_st = new ST;
+    now_st->num = STnum;
+    now_st->fa = cur_st;
+    cur_st = now_st;
+    for (int i = 0; i < param.size(); i++)//传递参数
+    {
+       Symbol symbol = {"var",0};
+       cur_st->table[param[i]] = symbol;
+       koopaIR += "  @" + param[i] + "_1 = alloc i32\n";
+       koopaIR += "  store %" + param[i] + ", @" + param[i] + "_1\n";
+    }
+    //cerr<<"\n"<<koopaIR<<"\n";
+    block->cal(koopaIR);
+    if(!check(koopaIR)) koopaIR += "  ret\n";
+    koopaIR += "\n}\n";
+    cur_st = cur_st->fa;
     return "";
   }
   int compute() const override
@@ -335,10 +426,11 @@ class FuncDefAST : public BaseAST {
 };
 
 // FuncTypeAST 也是 BaseAST
+/*
 class FuncTypeAST : public BaseAST
 {
     public:
-        std::string functype;
+        std::string functype;//两种
         void Dump(string& koopaIR) const override
         {
             //std::cout << "FuncTypeAST { ";
@@ -348,8 +440,31 @@ class FuncTypeAST : public BaseAST
         }
         string cal(string& koopaIR) const override
         {
-          koopaIR += "i32";
+          if(functype == "int") koopaIR += ": i32 ";
           return "";
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};*/
+
+class FuncFParamAST : public BaseAST
+{
+    public:
+        string type;
+        std::string ident;
+        void Dump(string& koopaIR) const override
+        {
+            //std::cout << "FuncTypeAST { ";
+            //std::cout << "int ";
+            //std::cout << " }";
+            //koopaIR += "i32";
+        }
+        string cal(string& koopaIR) const override
+        {
+          koopaIR += "%" + ident + ": i32";
+          return ident;
         }
         int compute() const override
         {
@@ -374,17 +489,12 @@ class BlockAST : public BaseAST
         }
         string cal(string& koopaIR) const override
         {
-          STnum++;
-          ST *now_st = new ST;
-          now_st->num = STnum;
-          now_st->fa = cur_st;
-          cur_st = now_st;
+          //cerr<<koopaIR;
           for (int i = 0; i < blockitem_.size(); i++)
           { //遍历每一个item
               if(check(koopaIR)) break;
               blockitem_[i]->cal(koopaIR);
           }
-          cur_st = cur_st->fa;
           return "";
         }
         int compute() const override
@@ -403,6 +513,7 @@ class BlockItem1AST: public BaseAST
         }
         string cal(string& koopaIR) const override
         {
+          //cerr<<koopaIR;
           stmt->cal(koopaIR);
           return "";
         }
@@ -611,6 +722,7 @@ class MatchStmt1AST : public BaseAST//return exp
         }
         string cal(string& koopaIR) const override
         {
+          //cerr<<koopaIR;
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
@@ -670,6 +782,7 @@ class MatchStmt3AST :public BaseAST
         }
         string cal(string& koopaIR) const override
         {
+          koopaIR += "  ret\n";
           return "";
 
         }
@@ -689,7 +802,15 @@ class MatchStmt4AST :public BaseAST
         }
         string cal(string& koopaIR) const override
         {
+          STnum++;
+          ST *now_st = new ST;
+          now_st->num = STnum;
+          now_st->fa = cur_st;
+          cur_st = now_st;
+
           block->cal(koopaIR);
+
+          cur_st = cur_st->fa;
           return "";
         }
         int compute() const override
@@ -873,12 +994,13 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
         }
         string cal(string& koopaIR) const override
         {
+          //cerr<<koopaIR;
           ST *now_st = cur_st;
           while(now_st->table.find(ident)==now_st->table.end()) now_st = now_st->fa;
 
           auto symbol = now_st->table[ident];
           string re;
-          
+          //cerr<<koopaIR;
           if(symbol.type == "const")
           {
             re = to_string(symbol.value);
@@ -1214,6 +1336,87 @@ class UnaryExp2AST : public BaseAST
             else if(unaryop == "-") return -R;
             else return !R;
           }
+};
+
+class UnaryExp3AST : public BaseAST
+{
+    public:
+        std::string ident;
+        void Dump(string& koopaIR) const override
+        {
+            //std::cout << "FuncTypeAST { ";
+            //std::cout << "int ";
+            //std::cout << " }";
+            //koopaIR += "i32";
+        }
+        string cal(string& koopaIR) const override
+        {
+          string ans = "";
+          if(globalF[ident] == "void")
+          {
+            koopaIR +="  call @" + ident + "()\n";
+          }
+          else
+          {
+            string now = "%" + to_string(++cnt);
+            koopaIR += now + " = call @" + ident + "()\n";
+            ans = now;
+          }
+          return ans;
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+class UnaryExp4AST : public BaseAST//有参数函数调用
+{
+    public:
+        std::string ident;
+        vector<BaseAST*> funcrparams;
+        mutable vector<string> param;
+        void Dump(string& koopaIR) const override
+        {
+            //std::cout << "FuncTypeAST { ";
+            //std::cout << "int ";
+            //std::cout << " }";
+            //koopaIR += "i32";
+        }
+        string cal(string& koopaIR) const override
+        {
+          for(int i = 0; i < funcrparams.size(); i++)
+          {
+            string re = funcrparams[i]->cal(koopaIR);
+            if(re[0]=='@')//变量
+            {
+              koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+              re = "%" + to_string(cnt);
+            }
+            param.push_back(re);
+          }
+          string ans = "";
+          if(globalF[ident] == "void")
+          {
+            koopaIR += "  call @" + ident + "(";
+          }
+          else
+          {
+           string now = "%" + to_string(++cnt);
+           koopaIR += now + " = call @" + ident + "(";
+           ans = now;
+          }
+          for(int i = 0; i < param.size(); i++)
+          {
+            koopaIR += param[i];
+            if((i+1)!=param.size()) koopaIR += ", ";
+          }
+          koopaIR += ")\n";
+          return ans;
+        }
+        int compute() const override
+        {
+          return 0;
+        }
 };
 
 class AddExp1AST : public BaseAST
