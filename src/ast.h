@@ -10,6 +10,7 @@ extern int cnt;
 extern int STnum;
 extern int IFnum;
 extern int WHILEnum;
+extern int SHORT;
 extern bool check(string s);
 extern map<string,string> globalF;
 struct Symbol
@@ -1067,7 +1068,7 @@ class LOrExp2AST : public BaseAST
 
       }
       string cal(string& koopaIR) const override
-      {
+      {/*
          string L = lorexp->cal(koopaIR);
          string R = landexp->cal(koopaIR);
          if(L[0]=='@')
@@ -1083,7 +1084,37 @@ class LOrExp2AST : public BaseAST
          koopaIR += "%" + to_string(++cnt) + " = or " + L +", " + R + "\n";
          cnt++;
          koopaIR += "%" + to_string(cnt) + " = ne 0, %" + to_string(cnt-1) + "\n";        
-         return "%" + to_string(cnt);
+         return "%" + to_string(cnt);*/
+         SHORT++;
+         string ans = "@lorans_" + to_string(SHORT);
+         string L = lorexp->cal(koopaIR);
+         if(L[0]=='@')
+         {
+           koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+           L = "%" + to_string(cnt);
+         }
+         IFnum++;
+         string then_ = "%then_" + to_string(IFnum);
+         string else_ = "%else_" + to_string(IFnum);
+         string end_ = "%end_" + to_string(IFnum);
+         koopaIR += ans + " = alloc i32\n";
+         koopaIR += "  br " + L + ", " + then_ + ", " + else_ + "\n";
+         koopaIR += then_ + ":\n";
+         koopaIR += "  store 1, " + ans + "\n";
+         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += else_ + ":\n";
+         string R = landexp->cal(koopaIR);
+         if(R[0]=='@')
+         {
+           koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+           R = "%" + to_string(cnt);
+         }
+         koopaIR += "  %" + to_string(++cnt) + " = ne 0, " + R + "\n";
+         koopaIR += "  store %" + to_string(cnt) + ", " + ans + "\n";
+         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += end_ + ":\n";
+         return ans;
+
       }
       int compute() const override
       {
@@ -1121,7 +1152,7 @@ class LAndExp2AST : public BaseAST
 
       }
       string cal(string& koopaIR) const override
-      {
+      {/*
        string L = landexp->cal(koopaIR);
        string R = eqexp->cal(koopaIR);
        if(L[0]=='@')
@@ -1138,7 +1169,36 @@ class LAndExp2AST : public BaseAST
        koopaIR += "%" + to_string(++cnt) + " = ne 0, " + R + "\n";
        cnt++;
        koopaIR += "%" + to_string(cnt) + " = and %" + to_string(cnt-2) +", %" + to_string(cnt-1) + "\n";       
-       return "%" + to_string(cnt);
+       return "%" + to_string(cnt);*/
+         SHORT++;
+         string ans = "@landans_" + to_string(SHORT);
+         string L = landexp->cal(koopaIR);
+         if(L[0]=='@')
+         {
+           koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+           L = "%" + to_string(cnt);
+         }
+         IFnum++;
+         string then_ = "%then_" + to_string(IFnum);
+         string else_ = "%else_" + to_string(IFnum);
+         string end_ = "%end_" + to_string(IFnum);
+         koopaIR += ans + " = alloc i32\n";
+         koopaIR += "  br " + L + ", " + else_ + ", " + then_ + "\n";
+         koopaIR += then_ + ":\n";
+         koopaIR += "  store 0, " + ans + "\n";
+         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += else_ + ":\n";
+         string R = eqexp->cal(koopaIR);
+         if(R[0]=='@')
+         {
+           koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+           R = "%" + to_string(cnt);
+         }
+         koopaIR += "  %" + to_string(++cnt) + " = ne 0, " + R + "\n";
+         koopaIR += "  store %" + to_string(cnt) + ", " + ans + "\n";
+         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += end_ + ":\n";
+         return ans;
       }
       int compute() const override
       {
