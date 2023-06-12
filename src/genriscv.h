@@ -10,7 +10,8 @@ map<koopa_raw_value_t, int> map_reg;
 
 map<koopa_raw_function_t, int> func_sp; // 记录每个函数占据栈的大小
 map<koopa_raw_value_t, int> inst_sp; // 记录栈中每条指令的位置
-int cur_sp = 0;
+map<koopa_raw_function_t, int> func_ra;
+//int cur_sp = 0;
 koopa_raw_function_t cur_func;
 // 函数声明略
 // ...
@@ -40,6 +41,11 @@ void Visit(const koopa_raw_load_t &load);
 void Visit(const koopa_raw_branch_t &branch);
 void Visit(const koopa_raw_jump_t &jump);
 
+//全局
+void Visit(const koopa_raw_global_alloc_t &global_alloc);
+//函数调用
+void Visit(const koopa_raw_call_t &call);
+
 void genriscv(string koopaIR)
 { 
   const char* str = koopaIR.c_str();
@@ -67,7 +73,6 @@ void genriscv(string koopaIR)
 void Visit(const koopa_raw_program_t &program) 
 {
   // 执行一些其他的必要操作
-  cout << " .text\n";
   Visit(program.values);//全局变量列表
   Visit(program.funcs);//函数列表
 }
@@ -103,30 +108,64 @@ void Visit(const koopa_raw_slice_t &slice)
 // 访问函数
 void Visit(const koopa_raw_function_t &func) 
 {
+  int cur_sp = 0; //有返回值的指令大小*4
+  int cur_ra = 0; //是否需要保存返回地址
+  int cur_param = 0; //参数个数
+  int cur_param_size = 0; //参数需要占用内存空间大小 //前八个在寄存器a0-a7
+  inst_sp.clear();
+  if (func->bbs.len == 0)
+  { //如果是函数声明则跳过
+        return;
+  }
   // 执行一些其他的必要操作
+  cout << " .text\n";
   cout << " .globl ";
   string name = func->name;
   cout << name.substr(1) << "\n";
   cout << name.substr(1) << ":\n";
   // cout << "function " << func->name << "visited" << endl;
-  for(size_t i = 0; i < func->bbs.len; ++ i)
+  for(int i = 0; i < func->bbs.len; ++ i)
   {
     koopa_raw_basic_block_t bb = (koopa_raw_basic_block_t) func->bbs.buffer[i];
-    for(size_t i = 0; i < bb->insts.len; ++ i)
+    for(int j = 0; j < bb->insts.len; ++ j)
     {
-      koopa_raw_value_t inst = (koopa_raw_value_t) bb->insts.buffer[i];
+      koopa_raw_value_t inst = (koopa_raw_value_t) bb->insts.buffer[j];
       if(inst->ty->tag != KOOPA_RTT_UNIT) 
       {
         inst_sp[inst] = cur_sp;
         cur_sp += 4;
       }
+      if(inst->kind.tag == KOOPA_RVT_CALL)
+      {
+        func_ra[func] = 4;
+        cur_ra = 4;
+        int callee_args = inst->kind.data.call.args.len;
+        cur_param = max(cur_param, callee_args);
+      }
     }
   }
+
+  cur_param_size = max(cur_param_size, (cur_param - 8) * 4);
+  cur_sp += cur_param_size;
+  cur_sp += cur_ra;
 
   cur_sp = (cur_sp + 15) / 16 * 16;
   func_sp[func] = cur_sp;
   cur_func = func;
-  Prologue(func);
+
+  for(size_t i = 0; i < func->bbs.len; ++ i)
+  {
+    koopa_raw_basic_block_t bb = (koopa_raw_basic_block_t) func->bbs.buffer[i];
+    for(size_t j = 0; j < bb->insts.len; ++ j)
+    {
+      koopa_raw_value_t inst = (koopa_raw_value_t) bb->insts.buffer[j];
+      if(inst->ty->tag != KOOPA_RTT_UNIT) {
+        inst_sp[inst] += cur_param_size;
+      }
+    }
+  }//预计算
+
+  Prologue(func);//addi sp,保存返回地址
   Visit(func->bbs);
 }
 
@@ -161,8 +200,8 @@ void Visit(const koopa_raw_value_t &value) {
       Visit(kind.data.store);
       break;
     case KOOPA_RVT_LOAD:
-      Visit(kind.data.load);
-      sw(value, "t0");
+      Visit(kind.data.load);//%num = load @var
+      sw(value, "t0");     //先把数加载到t0中,然后在sw到%num对应的内存地址中
       break;
     case KOOPA_RVT_ALLOC:
       break;
@@ -171,6 +210,15 @@ void Visit(const koopa_raw_value_t &value) {
       break;
     case KOOPA_RVT_JUMP:
       Visit(kind.data.jump);
+      break;
+    case KOOPA_RVT_GLOBAL_ALLOC:
+      cout << "  .data\n" << "  .global " + string(value->name + 1) +  "\n" + string(value->name + 1) + ":\n";
+      Visit(kind.data.global_alloc);
+      break;
+    case KOOPA_RVT_CALL://函数调用
+      // call
+      Visit(kind.data.call);//调用后返回值存储在a0中
+      sw(value, "a0");
       break;
     default:// 其他类型暂时遇不到
       assert(false);
@@ -230,7 +278,7 @@ void Visit(const koopa_raw_binary_t &binary) {
 void Visit(const koopa_raw_return_t &ret)
 {
     koopa_raw_value_t value = ret.value;
-    li_lw(value, "a0");
+    if(value) li_lw(value, "a0");
     Epilogue(cur_func);
     cout << " ret" << endl;
 }
@@ -466,14 +514,24 @@ string get_reg(const koopa_raw_value_t &value)
 
 void Prologue(const koopa_raw_function_t &func){
   int sp = func_sp[func];
+  int ra = func_ra[func];
   if(sp)
   {
     cout << " addi  sp, sp, " + to_string(-sp) << endl;
+  }
+  if(ra)
+  {
+    cout << " sw ra, " + to_string(sp-4) + "(sp)\n";
   }
 }
 
 void Epilogue(const koopa_raw_function_t &func){
   int sp = func_sp[func];
+  int ra = func_ra[func];
+  if(ra)
+  {
+      cout << " lw ra, " + to_string(sp-4) + "(sp)\n";
+  }
   if(sp)
   {
     cout << " addi  sp, sp, " + to_string(sp) << endl;
@@ -481,27 +539,74 @@ void Epilogue(const koopa_raw_function_t &func){
 }
 
 void li_lw(const koopa_raw_value_t &value, string dest_reg="t0"){
-  if(inst_sp.find(value) == inst_sp.end()){
-    int number;
-    number = value->kind.data.integer.value;
-    cout << " li " << dest_reg << ", " << to_string(number) << endl;
+  if(inst_sp.find(value) == inst_sp.end())//常数或者全局变量
+  {
+    if(value->kind.tag == KOOPA_RVT_INTEGER)
+    {
+      int number;
+      number = value->kind.data.integer.value;
+      cout << " li " << dest_reg << ", " << to_string(number) << endl;
+    }
+    else if(value->kind.tag == KOOPA_RVT_GLOBAL_ALLOC)
+    {
+      string var_name = value->name;
+      cout << " la " << dest_reg << ", " << var_name.substr(1) << "\n";
+      cout << " lw " << dest_reg << ", " << "0(" << dest_reg << ")" << endl;
+    }
   }
-  else{ // 不是立即数，%0是指针指向对应指令
+  else
+  { // 不是立即数，%0是指针指向对应指令
     int cur_inst_sp = inst_sp[value];
     cout << " lw " << dest_reg << ", " << to_string(cur_inst_sp) << "(sp)" << endl;
   }
 }
 
 void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
-  int cur_inst_sp = inst_sp[dest];
-  cout << " sw " << src_reg << ", " << to_string(cur_inst_sp) << "(sp)" << endl;
+  if(inst_sp.find(dest) == inst_sp.end())
+  {
+    if(dest->kind.tag == KOOPA_RVT_GLOBAL_ALLOC)
+    {
+      string var_name = dest->name;
+      cout << " la t6, ";
+      for(int i = 1; i < var_name.size(); ++ i)
+      {
+        cout << var_name[i];
+      }
+      cout << endl;
+      cout << " sw " << src_reg << ", " << "0(t6)" << endl;
+    }
+  }
+  else
+  {
+    int cur_inst_sp = inst_sp[dest];
+    cout << " sw " << src_reg << ", " << to_string(cur_inst_sp) << "(sp)" << endl;
+  }
 }
 
 void Visit(const koopa_raw_store_t &store){//store 临时/常量 变量
   koopa_raw_value_t value = store.value;
   koopa_raw_value_t dest = store.dest;
-  li_lw(value, "t0");
-  sw(dest, "t0");
+  if(value->kind.tag == KOOPA_RVT_FUNC_ARG_REF)
+  {
+    int arg_index = value->kind.data.func_arg_ref.index;
+    if(arg_index < 8)
+    {
+      string src_reg = "a" + to_string(arg_index);
+      sw(dest, src_reg);
+    }
+    else
+    {
+      // 高地址到低地址长，caller栈存的参数需要到callee栈顶（最大地址）+参数序号-8
+      int arg_stack = func_sp[cur_func] + (arg_index - 8)*4;
+      cout << " lw t0, " + to_string(arg_stack)+"(sp)\n";
+      sw(dest, "t0");
+    }
+  }
+  else
+  {
+    li_lw(value, "t0");
+    sw(dest, "t0");
+  }
 }
 
 void Visit(const koopa_raw_load_t &load){//临时 = load 变量
@@ -520,4 +625,35 @@ void Visit(const koopa_raw_branch_t &branch) {
 void Visit(const koopa_raw_jump_t &jump) {
   string label_target = jump.target->name + 1;
   cout << "  j " << label_target << endl;
+}
+
+void Visit(const koopa_raw_global_alloc_t &global_alloc){
+  koopa_raw_value_t init = global_alloc.init;
+  if(init->kind.tag == KOOPA_RVT_INTEGER){
+    cout << " .word ";
+    cout << to_string(init->kind.data.integer.value) << endl;
+  }else if(init->kind.tag == KOOPA_RVT_ZERO_INIT){
+    cout << " .zero ";
+    cout << to_string(4) << endl;
+  }
+}
+
+void Visit(const koopa_raw_call_t &call){
+  koopa_raw_slice_t call_args = call.args;
+  koopa_raw_function_t callee = call.callee;
+  int args_num = call_args.len;
+  for(int i = 0; i < args_num; ++ i){
+    if(i < 8){
+      string dest_reg = "a" + to_string(i);
+      koopa_raw_value_t cur_arg = (koopa_raw_value_t) call_args.buffer[i];
+      li_lw(cur_arg, dest_reg);
+    }
+    else{
+      string dest_stack = to_string((i - 8) * 4) + "(sp)";
+      koopa_raw_value_t cur_arg = (koopa_raw_value_t) call_args.buffer[i];
+      li_lw(cur_arg, "t0");
+      cout << " sw t0, " << dest_stack << endl;
+    }
+  }
+  cout << " call " + string(callee->name + 1) + "\n";
 }
