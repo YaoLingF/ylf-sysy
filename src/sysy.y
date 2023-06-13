@@ -54,6 +54,7 @@ using namespace std;
 %type <int_val> Number
 %type <str_val> UnaryOp MulOp RelOp EqOp BType
 %type <vec_val> VarDef_ ConstDef_ BlockItem_ CompUnits FuncFParams FuncRParams
+%type <vec_val> ConstExp_ InitVal_ ConstInitVal_ Exp__
 
 %%
 
@@ -141,31 +142,61 @@ VarDef_
         $$ = vec;
     };
 
-
-
-
 VarDef
-    : IDENT {
+    : IDENT ConstExp_ {//constexp_存在时是数组
         auto ast = new VarDef1AST();
         ast->ident = *unique_ptr<string>($1);
+        if($2) ast->constexp_.assign(($2)->begin(), ($2)->end());
         $$ = ast;
-
     }
-    | IDENT '=' InitVal {
+    | IDENT ConstExp_ '=' InitVal {
 
         auto ast = new VarDef2AST();
         ast->ident = *unique_ptr<string>($1);
-        ast->initval = unique_ptr<BaseAST>($3);
+        ast->initval = unique_ptr<BaseAST>($4);
+        if($2) ast->constexp_.assign(($2)->begin(), ($2)->end());
         $$ = ast;
     };
 
+ConstExp_
+  : ConstExp_ '[' ConstExp ']' {//多维数组
+    auto vec = new vector<BaseAST*>;
+    if($1) vec->assign(($1)->begin(), ($1)->end());
+    vec->push_back($3);
+    $$ = vec;
+  }
+  | {
+    $$ = NULL;
+  };
 
 InitVal
     : Exp {
-        auto ast = new InitValAST();
+        auto ast = new InitVal1AST();
         ast->exp = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
+    | '{' '}' {
+        auto ast = new InitVal2AST();
+        $$ = ast;
+    }
+    | '{' InitVal_ '}' {
+        auto ast = new InitVal3AST();
+        if($2) ast->initval_.assign(($2)->begin(),($2)->end());
+        $$ = ast;
+    };
+
+InitVal_
+    : InitVal_ ',' InitVal {
+        auto vec = new vector<BaseAST*>;
+        if($1) vec->assign(($1)->begin(), ($1)->end());
+        vec->push_back($3);
+        $$ = vec;
+    }
+    | InitVal {
+        auto vec = new vector<BaseAST*>;
+        vec->push_back($1);
+        $$ = vec;
+    };
 
 BType
     : INT {
@@ -192,21 +223,44 @@ ConstDef_
 
 
 ConstDef
-    : IDENT '=' ConstInitVal {
+    : IDENT ConstExp_ '=' ConstInitVal {
         auto ast = new ConstDefAST();
         ast->ident = *unique_ptr<string>($1);
-        ast->constinitval = unique_ptr<BaseAST>($3);
+        if($2) ast->constexp_.assign(($2)->begin(), ($2)->end());
+        ast->constinitval = unique_ptr<BaseAST>($4);
         $$ = ast;
 
     };
 
 ConstInitVal
     : ConstExp {
-        auto ast = new ConstInitValAST();
+        auto ast = new ConstInitVal1AST();
         ast->constexp = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    | '{' '}' {
+        auto ast = new ConstInitVal2AST();
         $$ = ast;
 
     }
+    | '{' ConstInitVal_ '}' {
+        auto ast = new ConstInitVal3AST();
+        if($2) ast->constinitval_.assign(($2)->begin(),($2)->end());
+        $$ = ast;
+    };
+
+ConstInitVal_
+    : ConstInitVal_ ',' ConstInitVal {
+        auto vec = new vector<BaseAST*>;
+        if($1) vec->assign(($1)->begin(),($1)->end());
+        vec->push_back($3);
+        $$ = vec;
+    }
+    | ConstInitVal {
+        auto vec = new vector<BaseAST*>;
+        vec->push_back($1);
+        $$ = vec;
+    };
 
 ConstExp
     : Exp {
@@ -404,11 +458,22 @@ MatchStmt
     };
 
 LVal
-    : IDENT {
+    : IDENT Exp__ {
         auto ast = new LValAST();
         ast->ident = *unique_ptr<string>($1);
+        if(($2)) ast->exp__.assign(($2)->begin(),($2)->end());
         $$ = ast;
+    };
 
+Exp__
+    : Exp__ '[' Exp ']' {
+        auto vec = new vector<BaseAST*>;
+        if(($1)) vec->assign(($1)->begin(),($1)->end());
+        vec->push_back($3);
+        $$ = vec;
+    }
+    | {
+        $$ = NULL;
     };
 
 Exp

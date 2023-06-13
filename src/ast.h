@@ -158,6 +158,7 @@ class VarDef1AST: public BaseAST//没有初值
 {
     public:
         string ident;
+        vector<BaseAST*> constexp_;
         void Dump(string& koopaIR) const override
         {
             
@@ -186,6 +187,7 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
 {
     public:
         string ident;
+        vector<BaseAST*> constexp_;
         std::unique_ptr<BaseAST> initval;
         void Dump(string& koopaIR) const override
         {
@@ -193,10 +195,10 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
         }
         string cal(string& koopaIR) const override
         {
-          
+         
           Symbol symbol = {"var",0};
           cur_st->table[ident] = symbol;
-          if(cur_st->num == 0)//全局变量,有初值
+          if(cur_st->num == 0)//全局变量,有初值,根据语言规范,全局变量的初值是常值表达式
           {
              int ans = initval->compute();
              koopaIR += "global @" + ident + "_0 = alloc i32, " + to_string(ans) + "\n";
@@ -220,7 +222,7 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
         }
 };
 
-class InitValAST: public BaseAST
+class InitVal1AST: public BaseAST
 {
     public:
         std::unique_ptr<BaseAST> exp;
@@ -237,6 +239,42 @@ class InitValAST: public BaseAST
           return exp->compute();
         }
 };
+
+class InitVal2AST: public BaseAST
+{
+    public:
+        void Dump(string& koopaIR) const override
+        {
+            
+        }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class InitVal3AST: public BaseAST
+{
+    public:
+        vector<BaseAST*> initval_;
+        void Dump(string& koopaIR) const override
+        {
+            
+        }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
 /*
 class BTypeAST: public BaseAST
 {
@@ -261,6 +299,7 @@ class ConstDefAST: public BaseAST//常量定义，无任何语句产生
 {
     public:
         string ident;
+        vector<BaseAST*> constexp_;
         std::unique_ptr<BaseAST> constinitval;
         void Dump(string& koopaIR) const override
         {
@@ -280,7 +319,7 @@ class ConstDefAST: public BaseAST//常量定义，无任何语句产生
         }
 };
 
-class ConstInitValAST: public BaseAST
+class ConstInitVal1AST: public BaseAST
 {
     public:
         std::unique_ptr<BaseAST> constexp;
@@ -295,6 +334,41 @@ class ConstInitValAST: public BaseAST
         int compute() const override
         {
           return constexp->compute();
+        }
+};
+
+class ConstInitVal2AST: public BaseAST
+{
+    public:
+        void Dump(string& koopaIR) const override
+        {
+            
+        }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+class ConstInitVal3AST: public BaseAST
+{
+    public:
+        vector<BaseAST*> constinitval_;
+        void Dump(string& koopaIR) const override
+        {
+            
+        }
+        string cal(string& koopaIR) const override
+        {
+          return "";
+        }
+        int compute() const override
+        {
+          return 0;
         }
 };
 
@@ -989,6 +1063,7 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
 {
     public:
         string ident;
+        vector<BaseAST*> exp__;
         void Dump(string& koopaIR) const override
         {
             
