@@ -4,9 +4,11 @@
 #include <memory>
 #include <vector>
 #include <map>
+#include <algorithm>
 using namespace std;
 //基类
 extern int cnt;
+extern int cnt2;
 extern int STnum;
 extern int IFnum;
 extern int WHILEnum;
@@ -35,6 +37,7 @@ struct WT
   WT *fa;
 };
 extern WT *cur_wh;
+void dfs(string &koopaIR,string s,vector<int> v);
 class BaseAST
 {
  public:
@@ -159,23 +162,52 @@ class VarDef1AST: public BaseAST//没有初值
     public:
         string ident;
         vector<BaseAST*> constexp_;
+        
         void Dump(string& koopaIR) const override
         {
             
         }
         string cal(string& koopaIR) const override
         {
-          Symbol symbol = {"undef",0};
-          cur_st->table[ident] = symbol;
-          if(cur_st->num == 0)
+          if(constexp_.size() == 0)
           {
-            koopaIR += "global @" + ident + "_0 = alloc i32, zeroinit\n";
+            Symbol symbol = {"undef",0};//??
+            cur_st->table[ident] = symbol;
+            if(cur_st->num == 0)
+            {
+              koopaIR += "global @" + ident + "_0 = alloc i32, zeroinit\n";
+            }
+            else
+            {
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n"; 
+            }
+            return "";
           }
-          else
+          else//数组无初值，默认0
           {
-            koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n"; 
+            string ans = "i32";
+            vector<int> v;
+            for(int i = constexp_.size() - 1; i >= 0; i --)
+            {
+              int res = constexp_[i]->compute();
+              ans = "[" + ans + ", " + to_string(res) + "]";
+              v.push_back(res);
+            }
+            reverse(v.begin(),v.end());
+            Symbol symbol = {"varlist",0};
+            cur_st->table[ident] = symbol;
+            if(cur_st->num == 0)//全局
+            {
+              koopaIR += "global @" + ident + "_0 = alloc " + ans + ", zeroinit\n";
+            }
+            else
+            {
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc " + ans + "\n";
+              dfs(koopaIR,"@"+ident+"_"+to_string(cur_st->num),v);
+            }
+            return "";
+
           }
-          return "";
         }
         int compute() const override
         {
@@ -195,26 +227,32 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
         }
         string cal(string& koopaIR) const override
         {
-         
-          Symbol symbol = {"var",0};
-          cur_st->table[ident] = symbol;
-          if(cur_st->num == 0)//全局变量,有初值,根据语言规范,全局变量的初值是常值表达式
+          if(constexp_.size() == 0)//非数组
           {
-             int ans = initval->compute();
-             koopaIR += "global @" + ident + "_0 = alloc i32, " + to_string(ans) + "\n";
+            Symbol symbol = {"var",0};
+            cur_st->table[ident] = symbol;
+            if(cur_st->num == 0)//全局变量,有初值,根据语言规范,全局变量的初值是常值表达式
+            {
+              int ans = initval->compute();
+              koopaIR += "global @" + ident + "_0 = alloc i32, " + to_string(ans) + "\n";
+            }
+            else
+            {
+            koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n";
+            string re = initval->cal(koopaIR);
+            if(re[0] == '@')
+            {
+              koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+              re = "%" + to_string(cnt);
+            }
+            koopaIR += "  store " + re + ", " + "@" + ident + "_" +to_string(cur_st->num) + "\n";
+            }
+            return "";
           }
           else
           {
-          koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n";
-          string re = initval->cal(koopaIR);
-          if(re[0] == '@')
-          {
-             koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
-             re = "%" + to_string(cnt);
+            return "";
           }
-          koopaIR += "  store " + re + ", " + "@" + ident + "_" +to_string(cur_st->num) + "\n";
-          }
-          return "";
         }
         int compute() const override
         {
@@ -385,7 +423,7 @@ class ConstExpAST: public BaseAST
           return "";
         }
         int compute() const override
-        {
+        { 
           return exp->compute();
         }
 };
@@ -1745,6 +1783,7 @@ class PrimaryExp3AST: public BaseAST
           return lval->compute();
         }
 };
+
 
 
 

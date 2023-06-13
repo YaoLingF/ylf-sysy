@@ -9,6 +9,7 @@
 #include "genriscv.h"
 using namespace std;
 int cnt = -1;//虚拟寄存器个数
+int cnt2 = -1;
 int STnum = 0;//符号表个数
 int IFnum = 0;//if个数
 int WHILEnum = 0;//while个数
