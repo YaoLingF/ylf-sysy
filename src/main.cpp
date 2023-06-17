@@ -70,6 +70,8 @@ int main(int argc, const char *argv[])
   globalF["putint"] = "void";
   globalF["getch"]  = "int";
   globalF["putch"]  = "void";
+  globalF["getarray"]  = "int";
+  globalF["putarray"]  = "void";
   ast->cal(koopaIR);
   cout << endl;
 

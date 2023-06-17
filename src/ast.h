@@ -13,6 +13,8 @@ extern int STnum;
 extern int IFnum;
 extern int WHILEnum;
 extern int SHORT;
+extern int var_global_init;//用于全局数组初始化
+extern int var_local_init;//局部数组初始化
 extern bool check(string s);
 extern map<string,string> globalF;
 struct Symbol
@@ -37,7 +39,33 @@ struct WT
   WT *fa;
 };
 extern WT *cur_wh;
-void dfs(string &koopaIR,string s,vector<int> v);
+
+
+class varlist//变量数组初始化列表
+{
+  public:
+    bool single;//判断是单值还是{}
+    string num;
+    vector<varlist> v;
+};
+
+class constlist
+{
+  public:
+    bool single;
+    int num;
+    vector<constlist> v;
+};
+
+void flatten(varlist init,vector<int> v,vector<string> &flat);
+void flatten(constlist init,vector<int> v,vector<int> &flat);
+int Compute_len(vector<int> boundary);
+int Align(vector<int> boundary, int num_sum, int baseline);
+void varglobalinit(string &koopaIR,vector<int> v,vector<int> flat);
+void varlocalinit(bool init,string &koopaIR,string s,vector<int> v,vector<string> flat);
+
+
+
 class BaseAST
 {
  public:
@@ -45,6 +73,8 @@ class BaseAST
   virtual void Dump(string& koopaIR) const = 0;
   virtual string cal(string& koopaIR) const = 0;
   virtual int compute() const = 0;
+  virtual varlist computelist1(string& koopaIR){return varlist{};}
+  virtual constlist computelist2(string& koopaIR){return constlist{};};
 };
 
 // CompUnit 是 BaseAST
@@ -194,16 +224,17 @@ class VarDef1AST: public BaseAST//没有初值
               v.push_back(res);
             }
             reverse(v.begin(),v.end());
-            Symbol symbol = {"varlist",0};
+            Symbol symbol = {"varlist",int(constexp_.size())};
             cur_st->table[ident] = symbol;
             if(cur_st->num == 0)//全局
             {
               koopaIR += "global @" + ident + "_0 = alloc " + ans + ", zeroinit\n";
             }
-            else
+            else//局部
             {
               koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc " + ans + "\n";
-              dfs(koopaIR,"@"+ident+"_"+to_string(cur_st->num),v);
+              vector<string> flat;//空
+              varlocalinit(false,koopaIR,"@"+ident+"_"+to_string(cur_st->num),v,flat);
             }
             return "";
 
@@ -249,8 +280,50 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
             }
             return "";
           }
-          else
+          else//数组
           {
+            string ans = "i32";
+            vector<int> v;
+            for(int i = constexp_.size() - 1; i >= 0; i --)
+            {
+              int res = constexp_[i]->compute();
+              ans = "[" + ans + ", " + to_string(res) + "]";
+              v.push_back(res);
+            }
+            reverse(v.begin(),v.end());//翻转为正常维度
+            Symbol symbol = {"varlist",int(constexp_.size())};
+            cur_st->table[ident] = symbol;
+            
+            if(cur_st->num == 0)//全局数组   用{{{}}}整体进行赋值
+            {
+              constlist init = initval->computelist2(koopaIR);//得到完整列表
+              vector<int> flat;
+              flatten(init,v,flat);//init:列表,v:各个维度的信息,flat:铺平后的一维数组
+              //铺平之后，进行递归初始化
+              var_global_init = 0;
+              koopaIR += "global @" + ident + "_0 = alloc " + ans + ", ";
+              koopaIR += "{";
+              varglobalinit(koopaIR,v,flat);
+              koopaIR += "}\n";
+            }
+            else//局部数组 采用一个一个赋值的方法
+            {
+              varlist init = initval->computelist1(koopaIR);//得到完整列表
+              vector<string> flat;
+              flatten(init,v,flat);//init:列表,v:各个维度的信息,flat:铺平后的一维数组
+              for(int i = 0;i < flat.size(); i ++)//flat中的值可能是常数，中间值，变量，如果是变量先将它load到临时值%cnt中
+              {
+                if(flat[i][0] == '@')
+                {
+                  koopaIR += "%" + to_string(++cnt) + " = load " + flat[i] + "\n";
+                  flat[i] = "%" + to_string(cnt);
+                }
+              }
+            //铺平之后，进行递归初始化
+              var_local_init = 0;
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc " + ans + "\n";
+              varlocalinit(true,koopaIR,"@"+ident+"_"+to_string(cur_st->num),v,flat);
+            }
             return "";
           }
         }
@@ -276,6 +349,20 @@ class InitVal1AST: public BaseAST
         {
           return exp->compute();
         }
+        varlist computelist1(string &koopaIR) override
+        {
+          varlist re;
+          re.single = true;//单值,可能是变量,临时值,常数
+          re.num = exp->cal(koopaIR);
+          return re;
+        }
+        constlist computelist2(string &koopaIR) override
+        {
+          constlist re;
+          re.single = true;//单值,可能是变量,临时值,常数
+          re.num = exp->compute();
+          return re;
+        }
 };
 
 class InitVal2AST: public BaseAST
@@ -292,6 +379,18 @@ class InitVal2AST: public BaseAST
         int compute() const override
         {
           return 0;
+        }
+        varlist computelist1(string &koopaIR) override
+        {
+          varlist re;
+          re.single = false;//空列表{}
+          return re;
+        }
+        constlist computelist2(string &koopaIR) override
+        {
+          constlist re;
+          re.single = false;//空列表{}
+          return re;
         }
 };
 
@@ -310,6 +409,26 @@ class InitVal3AST: public BaseAST
         int compute() const override
         {
           return 0;
+        }
+        varlist computelist1(string &koopaIR) override
+        {
+          varlist re;
+          re.single = false;
+          for(int i = 0; i <initval_.size(); i ++)
+          {
+            re.v.push_back(initval_[i]->computelist1(koopaIR));
+          }
+          return re;
+        }
+        constlist computelist2(string &koopaIR) override
+        {
+          constlist re;
+          re.single = false;
+          for(int i = 0; i <initval_.size(); i ++)
+          {
+            re.v.push_back(initval_[i]->computelist2(koopaIR));
+          }
+          return re;
         }
 };
 
@@ -345,10 +464,50 @@ class ConstDefAST: public BaseAST//常量定义，无任何语句产生
         }
         string cal(string& koopaIR) const override
         {
-          int ans = constinitval->compute();
-          
-          Symbol symbol = {"const",ans};
-          cur_st->table[ident] = symbol;
+          if(constexp_.size() == 0)//单值常量定义
+          {
+            int ans = constinitval->compute();
+            Symbol symbol = {"const",ans};
+            cur_st->table[ident] = symbol;
+          }
+          else//数组常量
+          {
+            string ans = "i32";
+            vector<int> v;
+            for(int i = constexp_.size() - 1; i >= 0; i --)
+            {
+              int res = constexp_[i]->compute();
+              ans = "[" + ans + ", " + to_string(res) + "]";
+              v.push_back(res);
+            }
+            reverse(v.begin(),v.end());//翻转为正常维度
+            Symbol symbol = {"constlist",int(constexp_.size())};
+            cur_st->table[ident] = symbol;
+            if(cur_st->num == 0)//全局
+            {
+              constlist init = constinitval->computelist2(koopaIR);//得到完整列表
+              vector<int> flat;
+              flatten(init,v,flat);//init:列表,v:各个维度的信息,flat:铺平后的一维数组
+              //铺平之后，进行递归初始化
+              var_global_init = 0;
+              koopaIR += "global @" + ident + "_0 = alloc " + ans + ", ";
+              koopaIR += "{";
+              varglobalinit(koopaIR,v,flat);
+              koopaIR += "}\n";
+            }
+            else
+            {
+              constlist init = constinitval->computelist2(koopaIR);//得到完整列表
+              vector<int> flat;
+              flatten(init,v,flat);//init:列表,v:各个维度的信息,flat:铺平后的一维数组
+              //铺平之后，进行递归初始化
+              vector<string> ff;
+              for(auto x:flat) ff.push_back(to_string(x));
+              var_local_init = 0;
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc " + ans + "\n";
+              varlocalinit(true,koopaIR,"@"+ident+"_"+to_string(cur_st->num),v,ff);
+            }
+          }
           return "";
         }
         int compute() const override
@@ -373,6 +532,14 @@ class ConstInitVal1AST: public BaseAST
         {
           return constexp->compute();
         }
+        constlist computelist2(string &koopaIR) override
+        {
+          constlist re;
+          re.single = true;//单值,可能是变量,临时值,常数
+          re.num = constexp->compute();
+          return re;
+        }
+        
 };
 
 class ConstInitVal2AST: public BaseAST
@@ -389,6 +556,12 @@ class ConstInitVal2AST: public BaseAST
         int compute() const override
         {
           return 0;
+        }
+        constlist computelist2(string &koopaIR) override
+        {
+          constlist re;
+          re.single = false;
+          return re;
         }
 };
 
@@ -407,6 +580,16 @@ class ConstInitVal3AST: public BaseAST
         int compute() const override
         {
           return 0;
+        }
+        constlist computelist2(string &koopaIR) override
+        {
+          constlist re;
+          re.single = false;
+          for(int i = 0; i < constinitval_.size(); i ++)
+          {
+            re.v.push_back(constinitval_[i]->computelist2(koopaIR));
+          }
+          return re;
         }
 };
 
@@ -1108,22 +1291,59 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
         }
         string cal(string& koopaIR) const override
         {
-          //cerr<<koopaIR;
-          ST *now_st = cur_st;
-          while(now_st->table.find(ident)==now_st->table.end()) now_st = now_st->fa;
+            ST *now_st = cur_st;
+            while(now_st->table.find(ident)==now_st->table.end()) now_st = now_st->fa;
+            auto symbol = now_st->table[ident];
+            string re;
 
-          auto symbol = now_st->table[ident];
-          string re;
-          //cerr<<koopaIR;
-          if(symbol.type == "const")
-          {
-            re = to_string(symbol.value);
-          }
-          else
-          {
-            re = "@" + ident + "_" + to_string(now_st->num);
-          }
-          return re;
+            if(symbol.type == "const")//常量单值
+            {
+              re = to_string(symbol.value);
+              return re;
+            }
+            //数组要考虑是具体的值还是用来传参的
+            else if(symbol.type == "varlist" || symbol.type == "constlist")
+            {
+              vector<string> v;
+              for(int i = 0; i <exp__.size(); i ++)
+              {
+                v.push_back(exp__[i]->cal(koopaIR));
+              }
+              for(int i = 0; i < v.size(); i++)
+              {
+                if(v[i][0] == '@') 
+                {
+                  koopaIR += "%" + to_string(++cnt) + " = load " + v[i] + "\n";
+                  v[i] = "%" + to_string(cnt);
+                }
+              }
+              string pre = "@" + ident + "_" + to_string(now_st->num);
+              if(exp__.size() == symbol.value)//单值
+              {
+                for(int i = 0; i < v.size(); i ++)
+                {
+                  koopaIR += "@L" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                  pre = "@L" + to_string(cnt);
+                }
+                return pre;
+              }
+              else
+              {
+                for(int i = 0; i < v.size(); i ++)
+                {
+                  koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                  pre = "%" + to_string(cnt);
+                }
+                koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", 0\n";
+                return "%" + to_string(cnt);//%防止被load
+              }
+              
+            }
+            else//变量单值 var/undef
+            {
+              re = "@" + ident + "_" + to_string(now_st->num);
+              return re;
+            }
         }
         int compute() const override
         {
