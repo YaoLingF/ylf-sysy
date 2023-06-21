@@ -7,10 +7,9 @@
 using namespace std;
 int register_num = 0;
 map<koopa_raw_value_t, int> map_reg;
-
 map<koopa_raw_function_t, int> func_sp; // 记录每个函数占据栈的大小
 map<koopa_raw_value_t, int> inst_sp; // 记录栈中每条指令的位置
-map<koopa_raw_function_t, int> func_ra;
+map<koopa_raw_function_t, int> func_ra; //函数是否需要保存ra
 //int cur_sp = 0;
 koopa_raw_function_t cur_func;
 // 函数声明略
@@ -42,9 +41,12 @@ void Visit(const koopa_raw_branch_t &branch);
 void Visit(const koopa_raw_jump_t &jump);
 
 //全局
-void Visit(const koopa_raw_global_alloc_t &global_alloc);
+void Visit_global_alloc(const koopa_raw_value_t &value);
+void visit_aggregate(const koopa_raw_value_t &aggregate);
 //函数调用
 void Visit(const koopa_raw_call_t &call);
+void visit_getptr(const koopa_raw_value_t &getptr);
+void visit_getelemptr(const koopa_raw_value_t &getelemptr);
 
 void genriscv(string koopaIR)
 { 
@@ -114,7 +116,7 @@ void Visit(const koopa_raw_function_t &func)
   int cur_param_size = 0; //参数需要占用内存空间大小 //前八个在寄存器a0-a7
   inst_sp.clear();
   if (func->bbs.len == 0)
-  { //如果是函数声明则跳过
+  { //如果是函数声明则跳过 Sysy库函数
         return;
   }
   // 执行一些其他的必要操作
@@ -130,12 +132,28 @@ void Visit(const koopa_raw_function_t &func)
     for(int j = 0; j < bb->insts.len; ++ j)
     {
       koopa_raw_value_t inst = (koopa_raw_value_t) bb->insts.buffer[j];
-      if(inst->ty->tag != KOOPA_RTT_UNIT) 
+      if(inst->ty->tag != KOOPA_RTT_UNIT) //有返回 alloc load 算术运算
       {
         inst_sp[inst] = cur_sp;
-        cur_sp += 4;
+        if(inst->kind.tag == KOOPA_RVT_ALLOC) //可能是 *i32 *[i32,5] 甚至多维
+        {
+          auto kind = inst->ty->data.pointer.base; //获取当前 指针的base
+          int arraysize = 1;                        //初始化数组长度
+          while (kind->tag == KOOPA_RTT_ARRAY)
+          { //初始化数值时此部分跳过
+            //如果当前 kind 指向的为数组
+            int cursize = kind->data.array.len; //获取当前维度的长度
+            arraysize *= cursize;
+            kind = kind->data.array.base; //获取当前数组的base
+          }
+          cur_sp += 4 * arraysize;
+        }
+        else//非alloc
+        {
+          cur_sp += 4;
+        }
       }
-      if(inst->kind.tag == KOOPA_RVT_CALL)
+      if(inst->kind.tag == KOOPA_RVT_CALL)//函数调用,涉及到传参数
       {
         func_ra[func] = 4;
         cur_ra = 4;
@@ -203,7 +221,7 @@ void Visit(const koopa_raw_value_t &value) {
       Visit(kind.data.load);//%num = load @var
       sw(value, "t0");     //先把数加载到t0中,然后在sw到%num对应的内存地址中
       break;
-    case KOOPA_RVT_ALLOC:
+    case KOOPA_RVT_ALLOC://局部alloc 所占空间已经；预处理了，这里没有语句
       break;
     case KOOPA_RVT_BRANCH:
       Visit(kind.data.branch);
@@ -213,12 +231,20 @@ void Visit(const koopa_raw_value_t &value) {
       break;
     case KOOPA_RVT_GLOBAL_ALLOC:
       cout << "  .data\n" << "  .global " + string(value->name + 1) +  "\n" + string(value->name + 1) + ":\n";
-      Visit(kind.data.global_alloc);
+      Visit_global_alloc(value);
       break;
     case KOOPA_RVT_CALL://函数调用
-      // call
       Visit(kind.data.call);//调用后返回值存储在a0中
       sw(value, "a0");
+      break;
+    case KOOPA_RVT_AGGREGATE:
+      visit_aggregate(value);
+      break;
+    case KOOPA_RVT_GET_ELEM_PTR:
+      visit_getelemptr(value);
+      break;
+    case KOOPA_RVT_GET_PTR:
+      visit_getptr(value);
       break;
     default:// 其他类型暂时遇不到
       assert(false);
@@ -288,255 +314,6 @@ void Visit(const koopa_raw_integer_t &integer)
   cout << integer.value;
 }
 
-/*
-void Visit_binary(const koopa_raw_value_t &value)
-{
-    // 根据指令类型判断后续需要如何访问
-    const auto &kind = value->kind;
-    const auto binary = kind.data.binary;
-    // 根据运算符类型判断后续如何翻译
-    switch (binary.op)
-    {
-      case KOOPA_RBO_NOT_EQ:
-      case KOOPA_RBO_EQ:
-      case KOOPA_RBO_GT:
-      case KOOPA_RBO_LT:
-      case KOOPA_RBO_GE:
-      case KOOPA_RBO_LE:
-      case KOOPA_RBO_AND:
-      case KOOPA_RBO_OR:
-        Visit_bin_con(value);
-        break;
-      case KOOPA_RBO_ADD:
-      case KOOPA_RBO_SUB:
-      case KOOPA_RBO_MUL:
-      case KOOPA_RBO_DIV:
-      case KOOPA_RBO_MOD:
-        Visit_bin_double_reg(value);
-        break;
-      default:
-        assert(false);
-    }
-}
-
-void Visit_bin_con(const koopa_raw_value_t &value)
-{ 
-    //cout << " condition 指令" << endl;
-    const auto &kind = value->kind;
-    const auto binary = kind.data.binary;
-    string leftreg, rightreg;                            // 左右节点值
-    //cout<<"\n现在"<<register_num<<"\n";
-    map_reg[value] = register_num++;                     // 为当前指令分配一个寄存器
-    string eqregister = get_reg(value); // 定义当前指令的寄存器
-    if (binary.lhs->kind.tag == KOOPA_RVT_INTEGER)
-    { //先处理左节点,左节点为int值
-        if (binary.lhs->kind.data.integer.value == 0)
-        { //左节点为0
-            leftreg = "x0";
-        }
-        else
-        { //左节点为非0 int, li到当前寄存器
-            cout << "  li\t" << eqregister << ", ";
-            Visit(binary.lhs);
-            cout << endl;
-            leftreg = eqregister;
-        }
-    }
-    else
-    {
-        assert(binary.lhs->kind.tag != KOOPA_RVT_INTEGER); // assert左节点不是int值
-        leftreg = get_reg(binary.lhs);    //获取左边的寄存器
-    }
-
-    if (binary.rhs->kind.tag == KOOPA_RVT_INTEGER)
-    { //处理右节点,右节点为int值且为0
-        if (binary.rhs->kind.data.integer.value == 0)
-        { //右节点为0
-            rightreg = "x0";
-        }
-        else
-        { //右节点为非0 int, li到当前寄存器
-            if(binary.lhs->kind.tag == KOOPA_RVT_INTEGER && binary.lhs->kind.data.integer.value != 0)
-            {
-                map_reg[value] = register_num++;              // 为当前指令再分配一个寄存器
-                eqregister = get_reg(value); // 定义当前指令的寄存器
-            }
-            cout << "  li\t" << eqregister << ", ";
-            Visit(binary.rhs);
-            cout << endl;
-            rightreg = eqregister;
-        }
-    }
-    else
-    {
-        assert(binary.rhs->kind.tag != KOOPA_RVT_INTEGER); // assert左右节点不是int值
-        rightreg = get_reg(binary.rhs);   //获取右边的寄存器
-    }
-
-    switch (binary.op) // 根据指令类型判断当前指令的运算符
-    {
-    case KOOPA_RBO_EQ:
-        //使用xor和seqz指令完成 等值 判断
-        cout << "  xor\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
-        cout << "  seqz\t" + eqregister + ", " + eqregister + '\n';
-        break;
-    case KOOPA_RBO_NOT_EQ:
-        //使用xor和snez指令完成 不等 判断
-        cout << "  xor\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
-        cout << "  snez\t" + eqregister + ", " + eqregister + '\n';
-        break;
-    case KOOPA_RBO_OR:
-        //使用or和snez指令完成 或 判断
-        cout << "  or\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
-        //cout << "  snez\t" + eqregister + ", " + eqregister + '\n';
-        break;
-    case KOOPA_RBO_GT:
-        //大于使用 slt 指令,交换两操作数位置,一条语句直接结束
-        cout << "  slt\t" + eqregister + ", " + rightreg + ", " + leftreg + '\n';
-        break;
-    case KOOPA_RBO_LT:
-        //小于使用 slt 指令,一条语句直接结束
-        cout << "  slt\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
-        break;
-    case KOOPA_RBO_GE:
-        //>= 大于等于 先判断反命题: slt 判断 左 < 右, 再用异或 '1' 得到原命题
-        cout << "  slt\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
-        cout << "  xori\t" + eqregister + ", " + eqregister + ", 1\n";
-        break;
-    case KOOPA_RBO_LE:
-        //<= 小于等于,交换量操作数后, 与上面操作一致
-        cout << "  slt\t" + eqregister + ", " + rightreg + ", " + leftreg + '\n';
-        cout << "  xori\t" + eqregister + ", " + eqregister + ", 1\n";
-        break;
-    case KOOPA_RBO_AND:
-        // and使用三条指令
-        //cout << "  snez\t" + leftreg + ", " + leftreg + '\n';
-        //cout << "  snez\t" + rightreg + ", " + rightreg + '\n';
-        cout << "  and\t" + eqregister + ", " + leftreg + ", " + rightreg + '\n';
-        break;
-    default: // 其他类型暂时遇不到
-        assert(false);
-    }
-    
-}
-
-void Visit_bin_double_reg(const koopa_raw_value_t &value)
-{
-    //cout << " 算术指令" << endl;
-    const auto &kind = value->kind;
-    const auto binary = kind.data.binary;
-    string bin_op; //当前指令的运算符
-    switch (binary.op)
-    { // 根据指令类型判断当前指令的运算符
-    case KOOPA_RBO_ADD:
-        bin_op = "add";
-        break;
-    case KOOPA_RBO_SUB:
-        bin_op = "sub";
-        break;
-    case KOOPA_RBO_MUL:
-        bin_op = "mul";
-        break;
-    case KOOPA_RBO_DIV:
-        bin_op = "div";
-        break;
-    case KOOPA_RBO_MOD:
-        bin_op = "rem";
-        break;
-    default: // 其他类型暂时遇不到
-        assert(false);
-    }
-    string leftreg, rightreg;                            // 左右节点值
-    //cout<<"\n现在"<<register_num<<"\n";
-    map_reg[value] = register_num++;                     // 为当前指令分配一个寄存器
-    string eqregister = get_reg(value); // 定义当前指令的寄存器
-
-    if (binary.lhs->kind.tag == KOOPA_RVT_INTEGER)
-    { //先处理左节点,左节点为int值
-        if (binary.lhs->kind.data.integer.value == 0)
-        { //左节点为0
-            leftreg = "x0";
-        }
-        else
-        { //左节点为非0 int, li到当前寄存器
-            cout << "  li\t" << eqregister << ", ";
-            Visit(binary.lhs);
-            cout << endl;
-            leftreg = eqregister;
-        }
-    }
-    else
-    {
-        assert(binary.lhs->kind.tag != KOOPA_RVT_INTEGER); // assert左节点不是int值
-        leftreg = get_reg(binary.lhs);    //获取左边的寄存器
-    }
-
-    if (binary.rhs->kind.tag == KOOPA_RVT_INTEGER)
-    { //处理右节点,右节点为int值且为0
-        if (binary.rhs->kind.data.integer.value == 0)
-        { //右节点为0
-            rightreg = "x0";
-        }
-        else
-        { //右节点为非0 int, li到当前寄存器
-            if(binary.lhs->kind.tag == KOOPA_RVT_INTEGER && binary.lhs->kind.data.integer.value != 0)
-            {
-                map_reg[value] = register_num++;              // 为当前指令再分配一个寄存器
-                eqregister = get_reg(value); // 定义当前指令的寄存器
-            }
-            cout << "  li\t" << eqregister << ", ";
-            Visit(binary.rhs);
-            cout << endl;
-            rightreg = eqregister;
-        }
-    }
-    else
-    {
-        assert(binary.rhs->kind.tag != KOOPA_RVT_INTEGER); // assert左右节点不是int值
-        rightreg = get_reg(binary.rhs);   //获取右边的寄存器
-    }
-    cout << "  " + bin_op + '\t' + eqregister + ", " + leftreg + ", " + rightreg + "\n";
-}
-
-
-
-string get_reg(const koopa_raw_value_t &value)
-{
-    if(map_reg[value] > 6)
-    {                                               //当t0~t6用完时
-        return "a" + to_string(map_reg[value] - 7); // 用a0~a7
-    }
-    else
-    {
-        return "t" + to_string(map_reg[value]); // 获得当前指令的寄存器
-    }
-}*/
-
-void Prologue(const koopa_raw_function_t &func){
-  int sp = func_sp[func];
-  int ra = func_ra[func];
-  if(sp)
-  {
-    cout << " addi  sp, sp, " + to_string(-sp) << endl;
-  }
-  if(ra)
-  {
-    cout << " sw ra, " + to_string(sp-4) + "(sp)\n";
-  }
-}
-
-void Epilogue(const koopa_raw_function_t &func){
-  int sp = func_sp[func];
-  int ra = func_ra[func];
-  if(ra)
-  {
-      cout << " lw ra, " + to_string(sp-4) + "(sp)\n";
-  }
-  if(sp)
-  {
-    cout << " addi  sp, sp, " + to_string(sp) << endl;
-  }
-}
 
 void li_lw(const koopa_raw_value_t &value, string dest_reg="t0"){
   if(inst_sp.find(value) == inst_sp.end())//常数或者全局变量
@@ -557,7 +334,16 @@ void li_lw(const koopa_raw_value_t &value, string dest_reg="t0"){
   else
   { // 不是立即数，%0是指针指向对应指令
     int cur_inst_sp = inst_sp[value];
-    cout << " lw " << dest_reg << ", " << to_string(cur_inst_sp) << "(sp)" << endl;
+    if (cur_inst_sp < 2047)
+    { //如果srcstack 的size 小于 12 位 最大为+2047
+        cout << "  lw " + dest_reg + ", " + to_string(cur_inst_sp) + "(sp)" + "\n";
+    }
+    else
+    {
+        cout << "  li " + dest_reg + ", " + to_string(cur_inst_sp) + "\n";
+        cout << "  add " + dest_reg + ", sp, " + dest_reg + "\n";
+        cout << "  lw " + dest_reg + ", " + "0(" + dest_reg + ")\n";
+    }
   }
 }
 
@@ -579,13 +365,23 @@ void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
   else
   {
     int cur_inst_sp = inst_sp[dest];
-    cout << " sw " << src_reg << ", " << to_string(cur_inst_sp) << "(sp)" << endl;
+    if (cur_inst_sp < 2047)
+    { //如果srcstack 的size 小于 12 位 最大为+2047
+        cout << "  sw " + src_reg + ", " + to_string(cur_inst_sp) + "(sp)" + "\n";
+    }
+    else
+    {
+        cout << "  li t3, " + to_string(cur_inst_sp) + "\n";
+        cout << "  add t3, sp, t3\n";
+        cout << "  sw " + src_reg + ", 0(t3)\n";
+    }
   }
 }
 
-void Visit(const koopa_raw_store_t &store){//store 临时/常量 变量
+void Visit(const koopa_raw_store_t &store){//store 临时/常量 地址
   koopa_raw_value_t value = store.value;
   koopa_raw_value_t dest = store.dest;
+  string store_value_reg = "t0";
   if(value->kind.tag == KOOPA_RVT_FUNC_ARG_REF)
   {
     int arg_index = value->kind.data.func_arg_ref.index;
@@ -605,13 +401,78 @@ void Visit(const koopa_raw_store_t &store){//store 临时/常量 变量
   else
   {
     li_lw(value, "t0");
-    sw(dest, "t0");
+    //sw(dest, "t0");
+    string global_name, dest_stack;
+    string dest_reg = "t1";
+    switch (store.dest->kind.tag)
+    {
+    case KOOPA_RVT_GLOBAL_ALLOC:
+        //如果存入的位置是全局变量
+        // 1. 再申请一个变量计算存入的内存位置
+        // 先获取全局变量名称
+        sw(dest, "t0");
+        break;
+    case KOOPA_RVT_ALLOC:
+        //如果存入的位置是局部变量
+        sw(dest, "t0");
+        break;
+    case KOOPA_RVT_GET_ELEM_PTR:
+        //如果是 getelemptr 型
+        //将指针对应stack中存放的内容取出 ： 指针指向的地址
+        li_lw(store.dest,dest_reg);
+        //将内容从存入 地址对应的内存位置
+        cout << "  sw " + store_value_reg + ", 0(" + dest_reg + ")" << endl;
+        break;
+    case KOOPA_RVT_GET_PTR:
+        //如果是getptr型
+        li_lw(store.dest,dest_reg);
+        //将内容从存入 地址对应的内存位置
+        cout << "  sw " + store_value_reg + ", 0(" + dest_reg + ")" << endl;
+        break;
+    default:
+        cout << "store.dest->kind.tag: " << store.dest->kind.tag << endl;
+
+        std::cerr << "程序错误：store dest 类型不符合预期" << std::endl;
+        break;
+    }
+
   }
 }
 
 void Visit(const koopa_raw_load_t &load){//临时 = load 变量
-  koopa_raw_value_t src = load.src;
-  li_lw(src, "t0");//先加载到t0
+    koopa_raw_value_t src = load.src;
+    switch (load.src->kind.tag)
+    {
+    case KOOPA_RVT_INTEGER:
+        //如果是integer型
+        li_lw(src, "t0");
+        break;
+    case KOOPA_RVT_ALLOC:
+        //如果是alloc型
+        li_lw(src, "t0");
+    case KOOPA_RVT_GLOBAL_ALLOC:
+        //如果是global alloc型
+        li_lw(src, "t0");
+        break;
+    case KOOPA_RVT_GET_ELEM_PTR:
+        //如果是 getelemptr 型
+        // 1. 将其指针的地址中的内容取出
+        li_lw(src, "t0");
+        //再将其load进来
+        cout << "  lw t0, 0(t0)\n";
+        break;
+    case KOOPA_RVT_GET_PTR:
+        //如果是 getptr 型
+        // 1. 将其指针的地址中的内容取出
+        li_lw(src, "t0");
+        //再将其load进来
+        cout << "  lw t0, 0(t0)\n";
+        break;
+    default:
+        cout << "load.src->kind.tag = " << load.src->kind.tag << endl;
+        std::cerr << "程序错误：load 指令的目标类型不符合预期" << std::endl;
+        break;
+    }
 }
 
 void Visit(const koopa_raw_branch_t &branch) {
@@ -627,8 +488,132 @@ void Visit(const koopa_raw_jump_t &jump) {
   cout << "  j " << label_target << endl;
 }
 
+void Visit_global_alloc(const koopa_raw_value_t &value)
+{
+    const auto &init = value->kind.data.global_alloc.init;
+    // cout << init->kind.tag << endl;
+    if (init->kind.tag == KOOPA_RVT_ZERO_INIT)
+    { //如果初始值为zeroinit
+        if (value->ty->tag == KOOPA_RTT_POINTER)//??
+        {                      //如果用zeroinit初始化全0数组
+            int arraysize = 1; //初始化数组长度
+            auto kind = value->ty->data.pointer.base;
+            while (kind->tag == KOOPA_RTT_ARRAY)
+            { //初始化数值时此部分跳过
+                //如果当前 kind 指向的为数组
+                int cursize = kind->data.array.len; //获取当前维度的长度
+                arraysize *= cursize;
+                kind = kind->data.array.base; //获取当前数组的base
+            }
+            arraysize *= 4;
+            // int sizeofarray = 4 * (value->ty->data.pointer.base->data.array.len);
+            cout << "  .zero " + to_string(arraysize) + "\n";
+        }
+        else
+        {
+            cout << ".zero" << value->ty->tag << endl;
+            cout << "  .zero 4\n\n";
+        }
+    }
+    else if (init->kind.tag == KOOPA_RVT_INTEGER)//非数组并且非0
+    { //是数值初始
+        int num = init->kind.data.integer.value;
+        cout << "  .word " + to_string(num) + "\n";
+    }
+    else if (init->kind.tag == KOOPA_RVT_AGGREGATE)//一堆{{}}
+    { // 用 aggregate初始化数组
+        // 暂时处理一维数组情况
+        // 访问aggregate
+        Visit(init);
+    }
+    cout << "\n";
+
+}
+
+void visit_aggregate(const koopa_raw_value_t &aggregate)
+{
+    auto elems = aggregate->kind.data.aggregate.elems;
+    for (size_t i = 0; i < elems.len; ++i)
+    {
+        auto ptr = elems.buffer[i];
+        // 根据 elems 的 kind 决定将 ptr 视作何种元素，同一 elems 中存放着所有 elem 为同一类型
+        if (elems.kind == KOOPA_RSIK_VALUE)
+        { //如果当前的 elem 为 value 类型
+            auto elem = reinterpret_cast<koopa_raw_value_t>(ptr);
+            if (elem->kind.tag == KOOPA_RVT_AGGREGATE)
+            { //如果是 aggregate 型则循环嵌套访问
+                visit_aggregate(elem);
+            }
+            else if (elem->kind.tag == KOOPA_RVT_INTEGER)
+            { //如果是 integer 型 则用 .word + int
+                cout << "  .word ";
+                cout << to_string(elem->kind.data.integer.value) << "\n";
+            }
+            else if (elem->kind.tag == KOOPA_RVT_ZERO_INIT)
+            { //如果是zeroinit类型
+                auto kind = elem->ty->data.pointer.base;
+                int arraysize = 1; //初始化数组长度
+                while (kind->tag == KOOPA_RTT_ARRAY)
+                { //初始化数值时此部分跳过
+                    //如果当前 kind 指向的为数组
+                    int cursize = kind->data.array.len; //获取当前维度的长度
+                    arraysize *= cursize;
+                    kind = kind->data.array.base; //获取当前数组的base
+                }
+                arraysize *= 4;
+                cout << "  .zero " + to_string(arraysize) << endl;
+            }
+        }
+        else
+        {
+            cout << "elem.kind = " << elems.kind << endl;
+            std::cerr << "程序错误： aggregate 的elem 类型不符合预期" << std::endl;
+        }
+    }
+}
+/*
 void Visit(const koopa_raw_global_alloc_t &global_alloc){
   koopa_raw_value_t init = global_alloc.init;
+  if (init->kind.tag == KOOPA_RVT_ZERO_INIT)
+    { //如果初始值为zeroinit
+        if (value->ty->tag == KOOPA_RTT_POINTER)
+        {                      //如果用zeroinit初始化全0数组
+            int arraysize = 1; //初始化数组长度
+            auto kind = value->ty->data.pointer.base;
+            while (kind->tag == KOOPA_RTT_ARRAY)
+            { //初始化数值时此部分跳过
+                //如果当前 kind 指向的为数组
+                int cursize = kind->data.array.len; //获取当前维度的长度
+                arraysize *= cursize;
+                kind = kind->data.array.base; //获取当前数组的base
+            }
+            arraysize *= 4;
+            // int sizeofarray = 4 * (value->ty->data.pointer.base->data.array.len);
+            outfile << "  .zero " + to_string(arraysize) + "\n";
+        }
+        else
+        {
+            cout << ".zero" << value->ty->tag << endl;
+            outfile << "  .zero 4\n\n";
+        }
+    }
+    else if (init->kind.tag == KOOPA_RVT_INTEGER)
+    { //是数值初始
+        int num = init->kind.data.integer.value;
+        outfile << "  .word " + to_string(num) + "\n";
+    }
+    else if (init->kind.tag == KOOPA_RVT_AGGREGATE)
+    { // 用 aggregate初始化数组
+        // 暂时处理一维数组情况
+        // 访问aggregate
+        Visit_val(init, outfile, kirinfo);
+    }
+    else
+    {
+        std::cerr << "程序错误：全局变量初始化不符合预期" << std::endl;
+    }
+    outfile << endl;
+
   if(init->kind.tag == KOOPA_RVT_INTEGER){
     cout << " .word ";
     cout << to_string(init->kind.data.integer.value) << endl;
@@ -636,7 +621,7 @@ void Visit(const koopa_raw_global_alloc_t &global_alloc){
     cout << " .zero ";
     cout << to_string(4) << endl;
   }
-}
+}*/
 
 void Visit(const koopa_raw_call_t &call){
   koopa_raw_slice_t call_args = call.args;
@@ -656,4 +641,196 @@ void Visit(const koopa_raw_call_t &call){
     }
   }
   cout << " call " + string(callee->name + 1) + "\n";
+}
+
+void Prologue(const koopa_raw_function_t &func){
+  int sp = func_sp[func];
+  int ra = func_ra[func];
+  if(sp)
+  {
+    if(sp > 2047)
+    {
+      cout << "  li t0, " + to_string(-sp) + "\n";
+      cout << "  add sp, sp, t0\n";
+    }
+    else
+    {
+      cout << " addi  sp, sp, " + to_string(-sp) << endl;
+    }
+  }
+  if(ra)
+  {
+    if(sp > 2047)
+    {
+      cout << "  li t0, " + to_string(sp - 4) + "\n";
+      cout << "  add t0, sp, t0\n";
+      cout << "  sw ra, 0(t0)\n";
+    }
+    else
+    {
+      cout << " sw ra, " + to_string(sp-4) + "(sp)\n";
+    }
+  }
+}
+
+void Epilogue(const koopa_raw_function_t &func){
+  int sp = func_sp[func];
+  int ra = func_ra[func];
+  if(ra)
+  {
+    if(sp > 2047)
+    {
+      cout << "  li t0, " + to_string(sp - 4) + "\n";
+      cout << "  add t0, sp, t0\n";
+      cout << "  lw ra, 0(t0)\n";
+    }
+    else
+    {
+      cout << " lw ra, " + to_string(sp-4) + "(sp)\n";
+    }
+  }
+  if(sp)
+  {
+    if(sp > 2047)
+    {
+      cout << "  li t0, " + to_string(sp) + "\n";
+      cout << "  add sp, sp, t0\n";
+    }
+    else
+    {
+      cout << " addi  sp, sp, " + to_string(sp) << endl;
+    }
+  }
+  
+}
+
+void visit_getelemptr(const koopa_raw_value_t &getelemptr)
+{
+    auto src = getelemptr->kind.data.get_elem_ptr.src;
+    auto index = getelemptr->kind.data.get_elem_ptr.index;
+
+    auto kind = getelemptr->ty->data.pointer.base;
+    int arraysize = 1; //初始化数组长度
+    while (kind->tag == KOOPA_RTT_ARRAY)
+    { //初始化数值时此部分跳过
+        //如果当前 kind 指向的为数组
+        int cursize = kind->data.array.len; //获取当前维度的长度
+        arraysize *= cursize;
+        kind = kind->data.array.base; //获取当前数组的base
+    }
+
+    string src_reg = "t0"; //本行的src地址所用的寄存器
+    // 1. 计算 src 的地址
+    if (src->kind.tag == KOOPA_RVT_GLOBAL_ALLOC)
+    { //如果当前src为全局变量分配
+        // 先获取全局变量名称
+        string global_name = src->name;
+        // 去掉@符号
+        global_name = global_name.substr(1);
+        cout << "  la\t" + src_reg + ", " + global_name << endl;
+    }
+    else if (src->kind.tag == KOOPA_RVT_ALLOC) //如果当前指向的是局部变量
+    {
+        int srcstack = inst_sp[src]; // src 对应的stack位置
+        if (srcstack < 2047)
+        { //如果srcstack 的size 小于 12 位 最大为+2047
+            cout << "  addi\t" + src_reg + ", sp, " + to_string(srcstack) << endl;
+        }
+        else
+        {
+            cout << "  li\t" + src_reg + ", " + to_string(srcstack) << endl;
+            cout << "  add\t" + src_reg + ", sp, " + src_reg << endl;
+        }
+    }
+    else if (src->kind.tag == KOOPA_RVT_GET_ELEM_PTR)
+    { //如果当前指向的是指针 getelemptr 将里面的内容load进来
+        int srcstack = inst_sp[src]; // src 对应的stack位置
+        if (srcstack < 2047)
+        { //如果srcstack 的size 小于 12 位 最大为+2047
+            cout << "  lw " + src_reg + ", " + to_string(srcstack) + "(sp)" + "\n";
+        }
+        else
+        {
+            cout << "  li " + src_reg + ", " + to_string(srcstack) + "\n";
+            cout << "  add " + src_reg + ", sp, " + src_reg + "\n";
+            cout << "  lw " + src_reg + ", " + "0(" + src_reg + ")\n";
+        }
+    }
+    else if (src->kind.tag == KOOPA_RVT_GET_PTR)
+    { //如果当前指向的是指针 getptr 将里面的内容load进来
+        int srcstack = inst_sp[src]; // src 对应的stack位置
+        if (srcstack < 2047)
+        { //如果srcstack 的size 小于 12 位 最大为+2047
+            cout << "  lw " + src_reg + ", " + to_string(srcstack) + "(sp)" + "\n";
+        }
+        else
+        {
+            cout << "  li " + src_reg + ", " + to_string(srcstack) + "\n";
+            cout << "  add " + src_reg + ", sp, " + src_reg + "\n";
+            cout << "  lw " + src_reg + ", " + "0(" + src_reg + ")\n";
+        }
+    }
+    else
+    {
+        cout << "src->kind.tag = " << src->kind.tag << endl;
+        std::cerr << "程序错误： getelemptr 的 src 类型不符合预期" << std::endl;
+    }
+
+    // 2. 获得 index 的大小
+    string indexreg = "t1";
+    li_lw(index,indexreg);
+
+    string size_reg = "t2";
+    arraysize *= 4;
+    cout << "  li " + size_reg + ", " + to_string(arraysize) + "\n"; //当前指针的大小
+    cout << "  mul " + indexreg + ", " + indexreg + ", " + size_reg + "\n";
+
+    // 3. 计算 getelemptr 的结果
+    cout << "  add " + src_reg + ", " + src_reg + ", " + indexreg + "\n";
+    sw(getelemptr,src_reg);
+}
+
+void visit_getptr(const koopa_raw_value_t &getptr)//出现在函数有参数的情况下
+{
+    // TODO
+    auto src = getptr->kind.data.get_ptr.src;
+    auto index = getptr->kind.data.get_ptr.index;
+    // cout << "src->ty->data.pointer.base->tag:" << src->ty->data.pointer.base->tag << endl;
+
+    auto kind = src->ty->data.pointer.base; // src为指针，获取指针的基地址，以此来求 src指向内容的size
+    int arraysize = 1;                      //初始化数组长度
+    while (kind->tag == KOOPA_RTT_ARRAY)
+    { //初始化数值时此部分跳过
+        //如果当前 kind 指向的为数组
+        int cursize = kind->data.array.len; //获取当前维度的长度
+        arraysize *= cursize;
+        kind = kind->data.array.base; //获取当前数组的base
+    }
+    // cout << "arraysize:" << arraysize << endl;
+
+    string src_reg = "t0"; //本行的 src 地址所用的寄存器
+
+    // 1. 计算 src 的地址 TODO 这一部分的 src 应该只是从 load 获得的
+    if (src->kind.tag == KOOPA_RVT_LOAD)
+    {
+        li_lw(src,src_reg);
+    }
+    else
+    {
+        cout << "src->kind.tag = " << src->kind.tag << endl;
+        std::cerr << "程序错误： getptr 的 src 类型不符合预期" << std::endl;
+    }
+
+    // 2. 获得 index 的大小
+    string indexreg = "t1";
+    li_lw(index,indexreg);
+
+    string size_reg = "t2";
+    arraysize *= 4;
+    cout << "  li " + size_reg + ", " + to_string(arraysize) + "\n"; //当前指针的大小
+    cout << "  mul " + indexreg + ", " + indexreg + ", " + size_reg + "\n";
+
+    // 3. 计算 getptr 的结果
+    cout << "  add " + src_reg + ", " + src_reg + ", " + indexreg + "\n";
+    sw(getptr,src_reg);
 }

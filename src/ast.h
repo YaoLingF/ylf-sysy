@@ -302,6 +302,11 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
               //铺平之后，进行递归初始化
               var_global_init = 0;
               koopaIR += "global @" + ident + "_0 = alloc " + ans + ", ";
+              if(init.single == false&&init.v.size() == 0) 
+              {
+                koopaIR += "zeroinit\n";
+                return "";
+              }
               koopaIR += "{";
               varglobalinit(koopaIR,v,flat);
               koopaIR += "}\n";
@@ -647,7 +652,7 @@ class FuncDef1AST : public BaseAST {//无参数
     now_st->fa = cur_st;
     cur_st = now_st;
     block->cal(koopaIR);
-    if(!check(koopaIR)) koopaIR += "  ret\n";
+    if(!check(koopaIR)) koopaIR += "  ret \n";
     koopaIR += "\n}\n";
     //cerr<<"this is main\n";
     cur_st = cur_st->fa;
@@ -703,14 +708,43 @@ class FuncDef2AST : public BaseAST {//有参数
     cur_st = now_st;
     for (int i = 0; i < param.size(); i++)//传递参数
     {
-       Symbol symbol = {"var",0};
-       cur_st->table[param[i]] = symbol;
-       koopaIR += "  @" + param[i] + "_1 = alloc i32\n";
-       koopaIR += "  store %" + param[i] + ", @" + param[i] + "_1\n";
+      if(param[i][0]>='0'&&param[i][0]<='9')//数组参数
+      {
+        int split1 = 0;
+        for(int j = 0; j < param[i].size(); j ++)
+        {
+          if(param[i][j]>='0'&&param[i][j]<='9') split1 = j;
+          else break;
+        }
+        int len = 0;
+        for(int j = split1, p = 1; j >= 0; j --, p *= 10)
+        {
+          len += int(param[i][j]-'0')*p;
+        }
+        param[i] = param[i].substr(split1+1);
+        int split2 = 0;
+        for(int j = 0; j < param[i].size(); j++)
+        {
+          if(param[i][j] == '*') break;
+          else split2 = j;
+        }
+        Symbol symbol = {"paramlist",len};
+        string name = param[i].substr(0,split2+1);
+        cur_st->table[name] = symbol;
+        koopaIR += " @" + name + "_1 = alloc " + param[i].substr(split2+1) + "\n";
+        koopaIR += " store %" + name + ", @" + name + "_1\n";
+      }
+      else//普通单值
+      {
+        Symbol symbol = {"var",0};
+        cur_st->table[param[i]] = symbol;
+        koopaIR += "  @" + param[i] + "_1 = alloc i32\n";
+        koopaIR += "  store %" + param[i] + ", @" + param[i] + "_1\n";
+      }
     }
     //cerr<<"\n"<<koopaIR<<"\n";
     block->cal(koopaIR);
-    if(!check(koopaIR)) koopaIR += "  ret\n";
+    if(!check(koopaIR)) koopaIR += "  ret \n";
     koopaIR += "\n}\n";
     cur_st = cur_st->fa;
     return "";
@@ -745,7 +779,7 @@ class FuncTypeAST : public BaseAST
         }
 };*/
 
-class FuncFParamAST : public BaseAST
+class FuncFParam1AST : public BaseAST
 {
     public:
         string type;
@@ -761,6 +795,43 @@ class FuncFParamAST : public BaseAST
         {
           koopaIR += "%" + ident + ": i32";
           return ident;
+        }
+        int compute() const override
+        {
+          return 0;
+        }
+};
+
+
+class FuncFParam2AST : public BaseAST
+{
+    public:
+        string type;
+        std::string ident;
+        vector<BaseAST*> constexp_;
+        void Dump(string& koopaIR) const override
+        {
+            //std::cout << "FuncTypeAST { ";
+            //std::cout << "int ";
+            //std::cout << " }";
+            //koopaIR += "i32";
+        }
+        string cal(string& koopaIR) const override
+        {
+          vector<int> v;
+          for(int i = 0; i < constexp_.size(); i++)
+          {
+            v.push_back(constexp_[i]->compute());
+          }
+          koopaIR += "%" + ident + ": ";
+          string Type = "*";
+          for(int i = 0; i < v.size(); i++)
+            Type += "[";
+          Type += "i32";
+          for(int i = v.size() - 1; i >= 0; i--)
+            Type +=", " + to_string(v[i]) + "]";
+          koopaIR += Type;
+          return to_string(constexp_.size()+1) + ident + Type;
         }
         int compute() const override
         {
@@ -1078,7 +1149,7 @@ class MatchStmt3AST :public BaseAST
         }
         string cal(string& koopaIR) const override
         {
-          koopaIR += "  ret\n";
+          koopaIR += "  ret \n";
           return "";
 
         }
@@ -1300,6 +1371,53 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
             {
               re = to_string(symbol.value);
               return re;
+            }
+            else if(symbol.type == "paramlist")//参数数组
+            {
+              vector<string> v;
+              for(int i = 0; i <exp__.size(); i ++)
+              {
+                v.push_back(exp__[i]->cal(koopaIR));
+              }
+              for(int i = 0; i < v.size(); i++)
+              {
+                if(v[i][0] == '@') 
+                {
+                  koopaIR += "%" + to_string(++cnt) + " = load " + v[i] + "\n";
+                  v[i] = "%" + to_string(cnt);
+                }
+              }
+              string pre = "@" + ident + "_" + to_string(now_st->num);
+              koopaIR += "%" + to_string(++cnt) + " = load " + pre + "\n";
+              pre = "%" + to_string(cnt);
+              if(exp__.size() == symbol.value)//单值
+              {
+                koopaIR += "@L" + to_string(++cnt) + " = getptr " + pre + ", " + v[0] + "\n";
+                pre = "@L" + to_string(cnt);
+                for(int i = 1; i < v.size(); i ++)
+                {
+                  koopaIR += "@L" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                  pre = "@L" + to_string(cnt);
+                }
+                return pre;
+              }
+              else//数组参数
+              {
+                if(v.size() == 0) return pre;
+                else
+                {
+                  koopaIR += "%" + to_string(++cnt) + " = getptr " + pre + ", " + v[0] + "\n";
+                  pre = "%" + to_string(cnt);
+                  for(int i = 1; i < v.size(); i ++)
+                  {
+                    koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                    pre = "%" + to_string(cnt);
+                  }
+                  koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", 0\n";
+                  return "%" + to_string(cnt);
+                }
+              }
+
             }
             //数组要考虑是具体的值还是用来传参的
             else if(symbol.type == "varlist" || symbol.type == "constlist")

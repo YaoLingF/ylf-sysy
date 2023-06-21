@@ -327,9 +327,16 @@ FuncFParams
 
 FuncFParam//单个函数参数
   : BType IDENT {
-    auto ast = new FuncFParamAST();
+    auto ast = new FuncFParam1AST();
     ast->type = *unique_ptr<string>($1);
     ast->ident = *unique_ptr<string>($2);
+    $$ = ast;
+  }
+  | BType IDENT '[' ']' ConstExp_ {
+    auto ast = new FuncFParam2AST();
+    ast->type = *unique_ptr<string>($1);
+    ast->ident = *unique_ptr<string>($2);
+    if($5) ast->constexp_.assign(($5)->begin(),($5)->end());
     $$ = ast;
   };
   

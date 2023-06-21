@@ -381,39 +381,39 @@ typedef struct {
 /// Tag of raw Koopa value.
 ///
 typedef enum {
-  /// Integer constant.
+  /// Integer constant.常量
   KOOPA_RVT_INTEGER,
-  /// Zero initializer.
+  /// Zero initializer.0初始化
   KOOPA_RVT_ZERO_INIT,
-  /// Undefined value.
+  /// Undefined value.未定义
   KOOPA_RVT_UNDEF,
-  /// Aggregate constant.
+  /// Aggregate constant. 数组列表
   KOOPA_RVT_AGGREGATE,
-  /// Function argument reference.
+  /// Function argument reference. 函数参数引用 一般都是store给了另外一个替代品
   KOOPA_RVT_FUNC_ARG_REF,
-  /// Basic block argument reference.
+  /// Basic block argument reference.   未使用
   KOOPA_RVT_BLOCK_ARG_REF,
-  /// Local memory allocation.
+  /// Local memory allocation. 分配内存
   KOOPA_RVT_ALLOC,
-  /// Global memory allocation.
+  /// Global memory allocation. 全局分配
   KOOPA_RVT_GLOBAL_ALLOC,
-  /// Memory load.
+  /// Memory load.               取
   KOOPA_RVT_LOAD,
-  /// Memory store.
+  /// Memory store.              存
   KOOPA_RVT_STORE,
-  /// Pointer calculation.
+  /// Pointer calculation.           getptr
   KOOPA_RVT_GET_PTR,
-  /// Element pointer calculation.
+  /// Element pointer calculation.   getelemptr
   KOOPA_RVT_GET_ELEM_PTR,
-  /// Binary operation.
+  /// Binary operation.  二元操作
   KOOPA_RVT_BINARY,
-  /// Conditional branch.
+  /// Conditional branch. br跳转
   KOOPA_RVT_BRANCH,
-  /// Unconditional jump.
+  /// Unconditional jump.  jump跳转
   KOOPA_RVT_JUMP,
-  /// Function call.
+  /// Function call.  函数调用
   KOOPA_RVT_CALL,
-  /// Function return.
+  /// Function return.  返回
   KOOPA_RVT_RETURN,
 } koopa_raw_value_tag_t;
 
