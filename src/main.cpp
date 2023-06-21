@@ -1,7 +1,6 @@
 #include <cassert>
 #include <cstdio>
 #include <iostream>
-//#include <map>
 #include <memory>
 #include <string>
 #include <cstring>
@@ -86,9 +85,7 @@ int main(int argc, const char *argv[])
   }
   else // risc-v
   {
-    //gen_riscv(koopaIR);
     genriscv(koopaIR);
-    //cout << riscv_str;
   }
   fclose(stdout);
   return 0;

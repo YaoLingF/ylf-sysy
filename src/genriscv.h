@@ -571,57 +571,6 @@ void visit_aggregate(const koopa_raw_value_t &aggregate)
         }
     }
 }
-/*
-void Visit(const koopa_raw_global_alloc_t &global_alloc){
-  koopa_raw_value_t init = global_alloc.init;
-  if (init->kind.tag == KOOPA_RVT_ZERO_INIT)
-    { //如果初始值为zeroinit
-        if (value->ty->tag == KOOPA_RTT_POINTER)
-        {                      //如果用zeroinit初始化全0数组
-            int arraysize = 1; //初始化数组长度
-            auto kind = value->ty->data.pointer.base;
-            while (kind->tag == KOOPA_RTT_ARRAY)
-            { //初始化数值时此部分跳过
-                //如果当前 kind 指向的为数组
-                int cursize = kind->data.array.len; //获取当前维度的长度
-                arraysize *= cursize;
-                kind = kind->data.array.base; //获取当前数组的base
-            }
-            arraysize *= 4;
-            // int sizeofarray = 4 * (value->ty->data.pointer.base->data.array.len);
-            outfile << "  .zero " + to_string(arraysize) + "\n";
-        }
-        else
-        {
-            cout << ".zero" << value->ty->tag << endl;
-            outfile << "  .zero 4\n\n";
-        }
-    }
-    else if (init->kind.tag == KOOPA_RVT_INTEGER)
-    { //是数值初始
-        int num = init->kind.data.integer.value;
-        outfile << "  .word " + to_string(num) + "\n";
-    }
-    else if (init->kind.tag == KOOPA_RVT_AGGREGATE)
-    { // 用 aggregate初始化数组
-        // 暂时处理一维数组情况
-        // 访问aggregate
-        Visit_val(init, outfile, kirinfo);
-    }
-    else
-    {
-        std::cerr << "程序错误：全局变量初始化不符合预期" << std::endl;
-    }
-    outfile << endl;
-
-  if(init->kind.tag == KOOPA_RVT_INTEGER){
-    cout << " .word ";
-    cout << to_string(init->kind.data.integer.value) << endl;
-  }else if(init->kind.tag == KOOPA_RVT_ZERO_INIT){
-    cout << " .zero ";
-    cout << to_string(4) << endl;
-  }
-}*/
 
 void Visit(const koopa_raw_call_t &call){
   koopa_raw_slice_t call_args = call.args;
