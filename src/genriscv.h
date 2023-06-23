@@ -5,7 +5,6 @@
 #include <map>
 #include "koopa.h"
 using namespace std;
-int register_num = 0;
 map<koopa_raw_value_t, int> map_reg;
 map<koopa_raw_function_t, int> func_sp; // 记录每个函数占据栈的大小
 map<koopa_raw_value_t, int> inst_sp; // 记录栈中每条指令的位置
@@ -67,7 +66,7 @@ void genriscv(string koopaIR)
 
   Visit(raw);
 
-   // 处理完成, 释放 raw program builder 占用的内存
+  // 处理完成, 释放 raw program builder 占用的内存
   // 注意, raw program 中所有的指针指向的内存均为 raw program builder 的内存
   // 所以不要在 raw program 处理完毕之前释放 builder
   koopa_delete_raw_program_builder(builder);
@@ -193,7 +192,7 @@ void Visit(const koopa_raw_basic_block_t &bb) {
   // ...
   // 访问所有指令
   string re = bb->name +1;
-  if(re != "entry") cout<< re << ":\n";
+  if(re.substr(0,5) != "entry") cout<< re << ":\n";
   Visit(bb->insts);
 }
 
@@ -450,6 +449,7 @@ void Visit(const koopa_raw_load_t &load){//临时 = load 变量
     case KOOPA_RVT_ALLOC:
         //如果是alloc型
         li_lw(src, "t0");
+        break;
     case KOOPA_RVT_GLOBAL_ALLOC:
         //如果是global alloc型
         li_lw(src, "t0");

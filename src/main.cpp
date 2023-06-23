@@ -7,7 +7,7 @@
 #include "ast.h"
 #include "genriscv.h"
 using namespace std;
-string riscv_str = "";
+int entrynum = 0;
 int cnt = -1;//虚拟寄存器个数
 int cnt2 = -1;
 int STnum = 0;//符号表个数
@@ -24,7 +24,7 @@ WT *cur_wh = NULL;//while表
 // 看起来会很烦人, 于是干脆采用这种看起来 dirty 但实际很有效的手段
 extern FILE *yyin;
 extern int yyparse(unique_ptr<BaseAST> &ast);
-extern void gen_riscv(string koopa_str);
+extern string pass(string s);
 bool check(string s)
 {
   for(int i = s.size()-1; s[i]!=':'; i--)
@@ -78,15 +78,18 @@ int main(int argc, const char *argv[])
   ast->cal(koopaIR);
   cout << endl;
 
-  freopen(output, "w", stdout);
+  koopaIR = pass(koopaIR);
   if (mode[1] == 'k') // koopa
   {
+    freopen(output, "w", stdout);
     std::cout << koopaIR;
+    fclose(stdout);
   }
   else // risc-v
   {
+    freopen(output, "w", stdout);
     genriscv(koopaIR);
+    fclose(stdout);
   }
-  fclose(stdout);
   return 0;
 }

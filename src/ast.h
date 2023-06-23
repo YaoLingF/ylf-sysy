@@ -7,6 +7,7 @@
 #include <algorithm>
 using namespace std;
 //基类
+extern int entrynum;
 extern int cnt;
 extern int cnt2;
 extern int STnum;
@@ -33,7 +34,7 @@ struct ST
 };
 extern ST *cur_st;
 
-struct WT
+struct WT//while符号表
 {
   int num;
   WT *fa;
@@ -199,17 +200,17 @@ class VarDef1AST: public BaseAST//没有初值
         }
         string cal(string& koopaIR) const override
         {
-          if(constexp_.size() == 0)
+          if(constexp_.size() == 0)//非数组
           {
             Symbol symbol = {"undef",0};//??
             cur_st->table[ident] = symbol;
             if(cur_st->num == 0)
             {
-              koopaIR += "global @" + ident + "_0 = alloc i32, zeroinit\n";
+              koopaIR += "global @" + ident + "_0=alloc i32,zeroinit\n";
             }
             else
             {
-              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n"; 
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + "=alloc i32\n"; 
             }
             return "";
           }
@@ -220,7 +221,7 @@ class VarDef1AST: public BaseAST//没有初值
             for(int i = constexp_.size() - 1; i >= 0; i --)
             {
               int res = constexp_[i]->compute();
-              ans = "[" + ans + ", " + to_string(res) + "]";
+              ans = "[" + ans + "," + to_string(res) + "]";
               v.push_back(res);
             }
             reverse(v.begin(),v.end());
@@ -228,11 +229,11 @@ class VarDef1AST: public BaseAST//没有初值
             cur_st->table[ident] = symbol;
             if(cur_st->num == 0)//全局
             {
-              koopaIR += "global @" + ident + "_0 = alloc " + ans + ", zeroinit\n";
+              koopaIR += "global @" + ident + "_0=alloc " + ans + ",zeroinit\n";
             }
             else//局部
             {
-              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc " + ans + "\n";
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + "=alloc " + ans + "\n";
               vector<string> flat;//空
               varlocalinit(false,koopaIR,"@"+ident+"_"+to_string(cur_st->num),v,flat);
             }
@@ -265,18 +266,18 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
             if(cur_st->num == 0)//全局变量,有初值,根据语言规范,全局变量的初值是常值表达式
             {
               int ans = initval->compute();
-              koopaIR += "global @" + ident + "_0 = alloc i32, " + to_string(ans) + "\n";
+              koopaIR += "global @" + ident + "_0=alloc i32," + to_string(ans) + "\n";
             }
             else
             {
-            koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc i32\n";
+            koopaIR += "@" + ident + "_" + to_string(cur_st->num) + "=alloc i32\n";
             string re = initval->cal(koopaIR);
             if(re[0] == '@')
             {
-              koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+              koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
               re = "%" + to_string(cnt);
             }
-            koopaIR += "  store " + re + ", " + "@" + ident + "_" +to_string(cur_st->num) + "\n";
+            koopaIR += "store " + re + "," + "@" + ident + "_" +to_string(cur_st->num) + "\n";
             }
             return "";
           }
@@ -287,7 +288,7 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
             for(int i = constexp_.size() - 1; i >= 0; i --)
             {
               int res = constexp_[i]->compute();
-              ans = "[" + ans + ", " + to_string(res) + "]";
+              ans = "[" + ans + "," + to_string(res) + "]";
               v.push_back(res);
             }
             reverse(v.begin(),v.end());//翻转为正常维度
@@ -301,7 +302,7 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
               flatten(init,v,flat);//init:列表,v:各个维度的信息,flat:铺平后的一维数组
               //铺平之后，进行递归初始化
               var_global_init = 0;
-              koopaIR += "global @" + ident + "_0 = alloc " + ans + ", ";
+              koopaIR += "global @" + ident + "_0=alloc " + ans + ",";
               if(init.single == false&&init.v.size() == 0) 
               {
                 koopaIR += "zeroinit\n";
@@ -320,13 +321,13 @@ class VarDef2AST: public BaseAST//有初始值 x = ?
               {
                 if(flat[i][0] == '@')
                 {
-                  koopaIR += "%" + to_string(++cnt) + " = load " + flat[i] + "\n";
+                  koopaIR += "%" + to_string(++cnt) + "=load " + flat[i] + "\n";
                   flat[i] = "%" + to_string(cnt);
                 }
               }
             //铺平之后，进行递归初始化
               var_local_init = 0;
-              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc " + ans + "\n";
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + "=alloc " + ans + "\n";
               varlocalinit(true,koopaIR,"@"+ident+"_"+to_string(cur_st->num),v,flat);
             }
             return "";
@@ -482,7 +483,7 @@ class ConstDefAST: public BaseAST//常量定义，无任何语句产生
             for(int i = constexp_.size() - 1; i >= 0; i --)
             {
               int res = constexp_[i]->compute();
-              ans = "[" + ans + ", " + to_string(res) + "]";
+              ans = "[" + ans + "," + to_string(res) + "]";
               v.push_back(res);
             }
             reverse(v.begin(),v.end());//翻转为正常维度
@@ -495,7 +496,7 @@ class ConstDefAST: public BaseAST//常量定义，无任何语句产生
               flatten(init,v,flat);//init:列表,v:各个维度的信息,flat:铺平后的一维数组
               //铺平之后，进行递归初始化
               var_global_init = 0;
-              koopaIR += "global @" + ident + "_0 = alloc " + ans + ", ";
+              koopaIR += "global @" + ident + "_0=alloc " + ans + ", ";
               koopaIR += "{";
               varglobalinit(koopaIR,v,flat);
               koopaIR += "}\n";
@@ -509,7 +510,7 @@ class ConstDefAST: public BaseAST//常量定义，无任何语句产生
               vector<string> ff;
               for(auto x:flat) ff.push_back(to_string(x));
               var_local_init = 0;
-              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + " = alloc " + ans + "\n";
+              koopaIR += "@" + ident + "_" + to_string(cur_st->num) + "=alloc " + ans + "\n";
               varlocalinit(true,koopaIR,"@"+ident+"_"+to_string(cur_st->num),v,ff);
             }
           }
@@ -642,9 +643,9 @@ class FuncDef1AST : public BaseAST {//无参数
     koopaIR += "fun @";
     koopaIR += ident;
     koopaIR += "()";
-    if(func_type == "int") koopaIR += ": i32 ";
+    if(func_type == "int") koopaIR += ":i32";
     koopaIR += "{\n";
-    koopaIR += "%entry:\n";
+    koopaIR += "%entry" + to_string(++entrynum) + ":\n";
 
     STnum++;
     ST *now_st = new ST;
@@ -652,9 +653,8 @@ class FuncDef1AST : public BaseAST {//无参数
     now_st->fa = cur_st;
     cur_st = now_st;
     block->cal(koopaIR);
-    if(!check(koopaIR)) koopaIR += "  ret \n";
-    koopaIR += "\n}\n";
-    //cerr<<"this is main\n";
+    if(!check(koopaIR)) koopaIR += "ret \n";
+    koopaIR += "}\n";
     cur_st = cur_st->fa;
     return "";
   }
@@ -694,12 +694,12 @@ class FuncDef2AST : public BaseAST {//有参数
     for (int i = 0; i < funcfparams.size(); i++)
     { //遍历每一个参数
         param.push_back(funcfparams[i]->cal(koopaIR));//参数名字(ident)
-        if((i+1)!=funcfparams.size()) koopaIR += ", ";
+        if((i+1)!=funcfparams.size()) koopaIR += ",";
     }
     koopaIR += ")";
-    if(func_type == "int") koopaIR += ": i32 ";
+    if(func_type == "int") koopaIR += ":i32";
     koopaIR += "{\n";
-    koopaIR += "%entry:\n";
+    koopaIR += "%entry" + to_string(++entrynum) + ":\n";
 
     STnum++;
     ST *now_st = new ST;
@@ -731,21 +731,21 @@ class FuncDef2AST : public BaseAST {//有参数
         Symbol symbol = {"paramlist",len};
         string name = param[i].substr(0,split2+1);
         cur_st->table[name] = symbol;
-        koopaIR += " @" + name + "_1 = alloc " + param[i].substr(split2+1) + "\n";
-        koopaIR += " store %" + name + ", @" + name + "_1\n";
+        koopaIR += "@" + name + "_1=alloc " + param[i].substr(split2+1) + "\n";
+        koopaIR += "store %" + name + ",@" + name + "_1\n";
       }
       else//普通单值
       {
         Symbol symbol = {"var",0};
         cur_st->table[param[i]] = symbol;
-        koopaIR += "  @" + param[i] + "_1 = alloc i32\n";
-        koopaIR += "  store %" + param[i] + ", @" + param[i] + "_1\n";
+        koopaIR += "@" + param[i] + "_1=alloc i32\n";
+        koopaIR += "store %" + param[i] + ",@" + param[i] + "_1\n";
       }
     }
     //cerr<<"\n"<<koopaIR<<"\n";
     block->cal(koopaIR);
-    if(!check(koopaIR)) koopaIR += "  ret \n";
-    koopaIR += "\n}\n";
+    if(!check(koopaIR)) koopaIR += "ret \n";
+    koopaIR += "}\n";
     cur_st = cur_st->fa;
     return "";
   }
@@ -793,7 +793,7 @@ class FuncFParam1AST : public BaseAST
         }
         string cal(string& koopaIR) const override
         {
-          koopaIR += "%" + ident + ": i32";
+          koopaIR += "%" + ident + ":i32";
           return ident;
         }
         int compute() const override
@@ -803,7 +803,7 @@ class FuncFParam1AST : public BaseAST
 };
 
 
-class FuncFParam2AST : public BaseAST
+class FuncFParam2AST : public BaseAST//数组型参数
 {
     public:
         string type;
@@ -823,13 +823,13 @@ class FuncFParam2AST : public BaseAST
           {
             v.push_back(constexp_[i]->compute());
           }
-          koopaIR += "%" + ident + ": ";
+          koopaIR += "%" + ident + ":";
           string Type = "*";
           for(int i = 0; i < v.size(); i++)
             Type += "[";
           Type += "i32";
           for(int i = v.size() - 1; i >= 0; i--)
-            Type +=", " + to_string(v[i]) + "]";
+            Type +="," + to_string(v[i]) + "]";
           koopaIR += Type;
           return to_string(constexp_.size()+1) + ident + Type;
         }
@@ -966,16 +966,16 @@ class UnMatchStmt1AST :public BaseAST//if(exp) stmt;
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
-            koopaIR += "  br %" + to_string(cnt) + ", " + then_ + ", " + end_ + "\n";
+            koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
+            koopaIR += "br %" + to_string(cnt) + "," + then_ + "," + end_ + "\n";
           }
           else
           {
-            koopaIR += "  br " + re + ", " + then_ + ", " + end_ + "\n";
+            koopaIR += "br " + re + "," + then_ + "," + end_ + "\n";
           }
           koopaIR += then_ + ":\n";
           stmt->cal(koopaIR);
-          if(!check(koopaIR)) koopaIR += "  jump " + end_ + "\n";
+          if(!check(koopaIR)) koopaIR += "jump " + end_ + "\n";
           koopaIR += end_ + ":\n";
           return "";
 
@@ -1005,12 +1005,12 @@ class UnMatchStmt2AST :public BaseAST //if(exp) match else unmatch
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
-            koopaIR += "  br %" + to_string(cnt) + ", " + then_ + ", " + else_ + "\n";
+            koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
+            koopaIR += "br %" + to_string(cnt) + "," + then_ + "," + else_ + "\n";
           }
           else
           {
-            koopaIR += "  br " + re + ", " + then_ + ", " + else_ + "\n";
+            koopaIR += "br " + re + "," + then_ + "," + else_ + "\n";
           }
           koopaIR += then_ + ":\n";
           match->cal(koopaIR);
@@ -1052,12 +1052,12 @@ class UnMatchStmt3AST :public BaseAST//while(exp) unmatch
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
-            koopaIR += "  br %" + to_string(cnt) + ", " + whilebody_ + ", " + end_ + "\n";
+            koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
+            koopaIR += "br %" + to_string(cnt) + "," + whilebody_ + "," + end_ + "\n";
           }
           else
           {
-            koopaIR += "  br " + re + ", " + whilebody_ + ", " + end_ + "\n";
+            koopaIR += "br " + re + "," + whilebody_ + "," + end_ + "\n";
           }
           koopaIR += whilebody_ + ":\n";
           unmatch->cal(koopaIR);
@@ -1093,12 +1093,12 @@ class MatchStmt1AST : public BaseAST//return exp
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
-            koopaIR += "  ret %" + to_string(cnt) + "\n";
+            koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
+            koopaIR += "ret %" + to_string(cnt) + "\n";
           }
           else
           {
-            koopaIR += "  ret " + re + "\n";
+            koopaIR += "ret " + re + "\n";
           }
           return "";
         }
@@ -1123,12 +1123,12 @@ class MatchStmt2AST: public BaseAST//赋值 lval = exp 左面一定是变量
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "%" + to_string(++cnt) + " = load" + re + "\n";
-            koopaIR += "  store %" + to_string(cnt) + ", " + left + "\n"; 
+            koopaIR += "%" + to_string(++cnt) + "=load" + re + "\n";
+            koopaIR += "store %" + to_string(cnt) + "," + left + "\n"; 
           }
           else//常量,临时值
           {
-            koopaIR += "  store " + re + ", " + left + "\n";
+            koopaIR += "store " + re + "," + left + "\n";
           }
 
           return "";
@@ -1149,7 +1149,7 @@ class MatchStmt3AST :public BaseAST
         }
         string cal(string& koopaIR) const override
         {
-          koopaIR += "  ret \n";
+          koopaIR += "ret \n";
           return "";
 
         }
@@ -1244,12 +1244,12 @@ class MatchStmt7AST :public BaseAST//if(exp) match1 else match2
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
-            koopaIR += "  br %" + to_string(cnt) + ", " + then_ + ", " + else_ + "\n";
+            koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
+            koopaIR += "br %" + to_string(cnt) + "," + then_ + "," + else_ + "\n";
           }
           else
           {
-            koopaIR += "  br " + re + ", " + then_ + ", " + else_ + "\n";
+            koopaIR += "br " + re + "," + then_ + "," + else_ + "\n";
           }
           koopaIR += then_ + ":\n";
           match1->cal(koopaIR);
@@ -1291,12 +1291,12 @@ class MatchStmt8AST :public BaseAST//while(exp) match
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
-            koopaIR += "  br %" + to_string(cnt) + ", " + whilebody_ + ", " + end_ + "\n";
+            koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
+            koopaIR += "br %" + to_string(cnt) + "," + whilebody_ + "," + end_ + "\n";
           }
           else
           {
-            koopaIR += "  br " + re + ", " + whilebody_ + ", " + end_ + "\n";
+            koopaIR += "br " + re + "," + whilebody_ + "," + end_ + "\n";
           }
           koopaIR += whilebody_ + ":\n";
           match->cal(koopaIR);
@@ -1383,20 +1383,20 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
               {
                 if(v[i][0] == '@') 
                 {
-                  koopaIR += "%" + to_string(++cnt) + " = load " + v[i] + "\n";
+                  koopaIR += "%" + to_string(++cnt) + "=load " + v[i] + "\n";
                   v[i] = "%" + to_string(cnt);
                 }
               }
               string pre = "@" + ident + "_" + to_string(now_st->num);
-              koopaIR += "%" + to_string(++cnt) + " = load " + pre + "\n";
+              koopaIR += "%" + to_string(++cnt) + "=load " + pre + "\n";
               pre = "%" + to_string(cnt);
               if(exp__.size() == symbol.value)//单值
               {
-                koopaIR += "@L" + to_string(++cnt) + " = getptr " + pre + ", " + v[0] + "\n";
+                koopaIR += "@L" + to_string(++cnt) + "=getptr " + pre + "," + v[0] + "\n";
                 pre = "@L" + to_string(cnt);
                 for(int i = 1; i < v.size(); i ++)
                 {
-                  koopaIR += "@L" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                  koopaIR += "@L" + to_string(++cnt) + "=getelemptr " + pre + "," + v[i] + "\n";
                   pre = "@L" + to_string(cnt);
                 }
                 return pre;
@@ -1406,14 +1406,14 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
                 if(v.size() == 0) return pre;
                 else
                 {
-                  koopaIR += "%" + to_string(++cnt) + " = getptr " + pre + ", " + v[0] + "\n";
+                  koopaIR += "%" + to_string(++cnt) + "=getptr " + pre + "," + v[0] + "\n";
                   pre = "%" + to_string(cnt);
                   for(int i = 1; i < v.size(); i ++)
                   {
-                    koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                    koopaIR += "%" + to_string(++cnt) + "=getelemptr " + pre + "," + v[i] + "\n";
                     pre = "%" + to_string(cnt);
                   }
-                  koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", 0\n";
+                  koopaIR += "%" + to_string(++cnt) + "=getelemptr " + pre + ",0\n";
                   return "%" + to_string(cnt);
                 }
               }
@@ -1431,7 +1431,7 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
               {
                 if(v[i][0] == '@') 
                 {
-                  koopaIR += "%" + to_string(++cnt) + " = load " + v[i] + "\n";
+                  koopaIR += "%" + to_string(++cnt) + "=load " + v[i] + "\n";
                   v[i] = "%" + to_string(cnt);
                 }
               }
@@ -1440,7 +1440,7 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
               {
                 for(int i = 0; i < v.size(); i ++)
                 {
-                  koopaIR += "@L" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                  koopaIR += "@L" + to_string(++cnt) + "=getelemptr " + pre + "," + v[i] + "\n";
                   pre = "@L" + to_string(cnt);
                 }
                 return pre;
@@ -1449,10 +1449,10 @@ class LValAST: public BaseAST//出现在赋值语句左边或者表达式中 常
               {
                 for(int i = 0; i < v.size(); i ++)
                 {
-                  koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", " + v[i] + "\n";
+                  koopaIR += "%" + to_string(++cnt) + "=getelemptr " + pre + "," + v[i] + "\n";
                   pre = "%" + to_string(cnt);
                 }
-                koopaIR += "%" + to_string(++cnt) + " = getelemptr " + pre + ", 0\n";
+                koopaIR += "%" + to_string(++cnt) + "=getelemptr " + pre + ",0\n";
                 return "%" + to_string(cnt);//%防止被load
               }
               
@@ -1541,28 +1541,28 @@ class LOrExp2AST : public BaseAST
          string L = lorexp->cal(koopaIR);
          if(L[0]=='@')
          {
-           koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+           koopaIR += "%" + to_string(++cnt) + "=load " + L + "\n";
            L = "%" + to_string(cnt);
          }
          IFnum++;
          string then_ = "%then_" + to_string(IFnum);
          string else_ = "%else_" + to_string(IFnum);
          string end_ = "%end_" + to_string(IFnum);
-         koopaIR += ans + " = alloc i32\n";
-         koopaIR += "  br " + L + ", " + then_ + ", " + else_ + "\n";
+         koopaIR += ans + "=alloc i32\n";
+         koopaIR += "br " + L + "," + then_ + "," + else_ + "\n";
          koopaIR += then_ + ":\n";
-         koopaIR += "  store 1, " + ans + "\n";
-         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += "store 1," + ans + "\n";
+         koopaIR += "jump " + end_ + "\n";
          koopaIR += else_ + ":\n";
          string R = landexp->cal(koopaIR);
          if(R[0]=='@')
          {
-           koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+           koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
            R = "%" + to_string(cnt);
          }
-         koopaIR += "  %" + to_string(++cnt) + " = ne 0, " + R + "\n";
-         koopaIR += "  store %" + to_string(cnt) + ", " + ans + "\n";
-         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += "%" + to_string(++cnt) + "=ne 0," + R + "\n";
+         koopaIR += "store %" + to_string(cnt) + "," + ans + "\n";
+         koopaIR += "jump " + end_ + "\n";
          koopaIR += end_ + ":\n";
          return ans;
 
@@ -1626,28 +1626,28 @@ class LAndExp2AST : public BaseAST
          string L = landexp->cal(koopaIR);
          if(L[0]=='@')
          {
-           koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+           koopaIR += "%" + to_string(++cnt) + "=load " + L + "\n";
            L = "%" + to_string(cnt);
          }
          IFnum++;
          string then_ = "%then_" + to_string(IFnum);
          string else_ = "%else_" + to_string(IFnum);
          string end_ = "%end_" + to_string(IFnum);
-         koopaIR += ans + " = alloc i32\n";
-         koopaIR += "  br " + L + ", " + else_ + ", " + then_ + "\n";
+         koopaIR += ans + "=alloc i32\n";
+         koopaIR += "br " + L + "," + else_ + "," + then_ + "\n";
          koopaIR += then_ + ":\n";
-         koopaIR += "  store 0, " + ans + "\n";
-         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += "store 0," + ans + "\n";
+         koopaIR += "jump " + end_ + "\n";
          koopaIR += else_ + ":\n";
          string R = eqexp->cal(koopaIR);
          if(R[0]=='@')
          {
-           koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+           koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
            R = "%" + to_string(cnt);
          }
-         koopaIR += "  %" + to_string(++cnt) + " = ne 0, " + R + "\n";
-         koopaIR += "  store %" + to_string(cnt) + ", " + ans + "\n";
-         koopaIR += "  jump " + end_ + "\n";
+         koopaIR += "%" + to_string(++cnt) + "=ne 0," + R + "\n";
+         koopaIR += "store %" + to_string(cnt) + "," + ans + "\n";
+         koopaIR += "jump " + end_ + "\n";
          koopaIR += end_ + ":\n";
          return ans;
       }
@@ -1693,22 +1693,22 @@ class EqExp2AST : public BaseAST
         string R = relexp->cal(koopaIR);
         if(L[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + L + "\n";
           L = "%" + to_string(cnt);
         }
         if(R[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
           R = "%" + to_string(cnt);
         }
         switch(eqop[0])
         {
           case '=':
-          koopaIR += "%" + to_string(++cnt) + " = eq " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=eq " + L +"," + R + "\n";
           break;
 
           case '!':
-          koopaIR += "%" + to_string(++cnt) + " = ne " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=ne " + L +"," + R + "\n";
           break;
 
           default:
@@ -1759,22 +1759,22 @@ class RelExp2AST : public BaseAST
         string R = addexp->cal(koopaIR);
         if(L[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + L + "\n";
           L = "%" + to_string(cnt);
         }
         if(R[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
           R = "%" + to_string(cnt);
         }
         if(relop == "<")
-          koopaIR += "%" + to_string(++cnt) + " = lt " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=lt " + L +"," + R + "\n";
         else if(relop == ">")
-          koopaIR += "%" + to_string(++cnt) + " = gt " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=gt " + L +"," + R + "\n";
         else if(relop == "<=")
-          koopaIR += "%" + to_string(++cnt) + " = le " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=le " + L +"," + R + "\n";
         else 
-          koopaIR += "%" + to_string(++cnt) + " = ge " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=ge " + L +"," + R + "\n";
         
         return "%" + to_string(cnt);
       }
@@ -1821,7 +1821,7 @@ class UnaryExp2AST : public BaseAST
              string R = unaryexp->cal(koopaIR);
              if(R[0]=='@')//先加载
              {
-               koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+               koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
                R = "%" + to_string(cnt);
              }
              switch(unaryop[0])
@@ -1830,10 +1830,10 @@ class UnaryExp2AST : public BaseAST
                 return R;
                 break;
               case '-':
-                koopaIR += " %" + to_string(++cnt) + " = sub 0, " + R +"\n";
+                koopaIR += "%" + to_string(++cnt) + "=sub 0," + R +"\n";
                 break;
               case '!':
-                koopaIR += " %" + to_string(++cnt) + " = eq " + R +", 0\n";
+                koopaIR += "%" + to_string(++cnt) + "=eq " + R +",0\n";
                 break;
               default :
                 break;
@@ -1849,7 +1849,7 @@ class UnaryExp2AST : public BaseAST
           }
 };
 
-class UnaryExp3AST : public BaseAST
+class UnaryExp3AST : public BaseAST//无参数
 {
     public:
         std::string ident;
@@ -1865,12 +1865,12 @@ class UnaryExp3AST : public BaseAST
           string ans = "";
           if(globalF[ident] == "void")
           {
-            koopaIR +="  call @" + ident + "()\n";
+            koopaIR +="call @" + ident + "()\n";
           }
           else
           {
             string now = "%" + to_string(++cnt);
-            koopaIR += now + " = call @" + ident + "()\n";
+            koopaIR += now + "=call @" + ident + "()\n";
             ans = now;
           }
           return ans;
@@ -1900,7 +1900,7 @@ class UnaryExp4AST : public BaseAST//有参数函数调用
             string re = funcrparams[i]->cal(koopaIR);
             if(re[0]=='@')//变量
             {
-              koopaIR += "  %" + to_string(++cnt) + " = load " + re + "\n";
+              koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
               re = "%" + to_string(cnt);
             }
             param.push_back(re);
@@ -1908,18 +1908,18 @@ class UnaryExp4AST : public BaseAST//有参数函数调用
           string ans = "";
           if(globalF[ident] == "void")
           {
-            koopaIR += "  call @" + ident + "(";
+            koopaIR += "call @" + ident + "(";
           }
           else
           {
            string now = "%" + to_string(++cnt);
-           koopaIR += now + " = call @" + ident + "(";
+           koopaIR += now + "=call @" + ident + "(";
            ans = now;
           }
           for(int i = 0; i < param.size(); i++)
           {
             koopaIR += param[i];
-            if((i+1)!=param.size()) koopaIR += ", ";
+            if((i+1)!=param.size()) koopaIR += ",";
           }
           koopaIR += ")\n";
           return ans;
@@ -1964,22 +1964,22 @@ class AddExp2AST : public BaseAST
         string R = mulexp->cal(koopaIR);
         if(L[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + L + "\n";
           L = "%" + to_string(cnt);
         }
         if(R[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
           R = "%" + to_string(cnt);
         }
         switch(unaryop[0])
         {
           case '+':
-          koopaIR += "%" + to_string(++cnt) + " = add " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=add " + L +"," + R + "\n";
           break;
 
           case '-':
-          koopaIR += "%" + to_string(++cnt) + " = sub " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=sub " + L +"," + R + "\n";
           break;
 
           default :
@@ -2030,26 +2030,26 @@ class MulExp2AST : public BaseAST
         string R = unaryexp->cal(koopaIR);
         if(L[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + L + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + L + "\n";
           L = "%" + to_string(cnt);
         }
         if(R[0]=='@')
         {
-          koopaIR += "  %" + to_string(++cnt) + " = load " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
           R = "%" + to_string(cnt);
         }
         switch(mulop[0])
         {
           case '*':
-          koopaIR += "%" + to_string(++cnt) + " = mul " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=mul " + L +"," + R + "\n";
           break;
 
           case '/':
-          koopaIR += "%" + to_string(++cnt) + " = div " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=div " + L +"," + R + "\n";
           break;
 
           case '%':
-          koopaIR += "%" + to_string(++cnt) + " = mod " + L +", " + R + "\n";
+          koopaIR += "%" + to_string(++cnt) + "=mod " + L +"," + R + "\n";
           break;
 
           default :

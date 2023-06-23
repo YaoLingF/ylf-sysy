@@ -103,7 +103,7 @@ void varglobalinit(string &koopaIR,vector<int> v,vector<int> flat)
   {
     koopaIR += to_string(flat[var_global_init++]);
     for(int i = 1; i < v[0]; i++)
-        koopaIR += ", " + to_string(flat[var_global_init++]);
+        koopaIR += "," + to_string(flat[var_global_init++]);
     return;
   }
   vector<int> tmp;
@@ -112,7 +112,7 @@ void varglobalinit(string &koopaIR,vector<int> v,vector<int> flat)
   varglobalinit(koopaIR,tmp,flat);
   koopaIR += "}";
   for(int i = 1; i < v[0]; i++){
-    koopaIR += ", {";
+    koopaIR += ",{";
     varglobalinit(koopaIR,tmp,flat);
     koopaIR += "}";
   }
@@ -125,9 +125,9 @@ void varlocalinit(bool init,string &koopaIR,string s,vector<int> v,vector<string
   {
     for(int i = 0; i < v[0]; i ++)
     {
-      koopaIR += "@list" + to_string(++cnt2) + " = getelemptr " + s + ", " + to_string(i) + "\n";
-      if(init) koopaIR += "  store " + flat[var_local_init++] + ", @list" + to_string(cnt2) + "\n";
-      else koopaIR += "  store 0, @list" + to_string(cnt2) + "\n";
+      koopaIR += "@list" + to_string(++cnt2) + "=getelemptr " + s + "," + to_string(i) + "\n";
+      if(init) koopaIR += "store " + flat[var_local_init++] + ",@list" + to_string(cnt2) + "\n";
+      else koopaIR += "store 0,@list" + to_string(cnt2) + "\n";
     }
 
     return ;
@@ -136,7 +136,7 @@ void varlocalinit(bool init,string &koopaIR,string s,vector<int> v,vector<string
   vv.assign(v.begin() + 1, v.end());
   for(int i = 0; i < v[0]; i ++)
   {
-    koopaIR += "@list" + to_string(++cnt2) + " = getelemptr " + s + ", " + to_string(i) + "\n";
+    koopaIR += "@list" + to_string(++cnt2) + "=getelemptr " + s + "," + to_string(i) + "\n";
     varlocalinit(init,koopaIR,"@list"+to_string(cnt2),vv,flat);
   }
 }
