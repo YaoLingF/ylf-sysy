@@ -1115,7 +1115,7 @@ class MatchStmt2AST: public BaseAST//赋值 lval = exp 左面一定是变量
         std::unique_ptr<BaseAST> exp;
         void Dump(string& koopaIR) const override
         {
-            
+           
         }
         string cal(string& koopaIR) const override
         {
@@ -1123,7 +1123,7 @@ class MatchStmt2AST: public BaseAST//赋值 lval = exp 左面一定是变量
           string re = exp->cal(koopaIR);
           if(re[0]=='@')//变量
           {
-            koopaIR += "%" + to_string(++cnt) + "=load" + re + "\n";
+            koopaIR += "%" + to_string(++cnt) + "=load " + re + "\n";
             koopaIR += "store %" + to_string(cnt) + "," + left + "\n"; 
           }
           else//常量,临时值
