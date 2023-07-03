@@ -420,20 +420,13 @@ void DFG()
                 }
                 else
                 {
-                    string dest=inst[j].dest;
-                    if(inst[j].out.find(dest)==inst[j].out.end()) 
+                    
+                    inst[j].in=inst[j].use;
+                    for(auto x:inst[j].out)
                     {
-                        DCE[j]=1;
-                        inst[j].in=inst[j].out;
+                        if(inst[j].def.find(x)==inst[j].def.end()) inst[j].in.insert(x);
                     }
-                    else
-                    {
-                        inst[j].in=inst[j].use;
-                        for(auto x:inst[j].out)
-                        {
-                            if(inst[j].def.find(x)==inst[j].def.end()) inst[j].in.insert(x);
-                        }
-                    }
+                    
                 }
                 
             }

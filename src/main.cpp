@@ -78,7 +78,7 @@ int main(int argc, const char *argv[])
   ast->cal(koopaIR);
   cout << endl;
 
-  //koopaIR = pass(koopaIR);
+  koopaIR = pass(koopaIR);
   if (mode[1] == 'k') // koopa
   {
     freopen(output, "w", stdout);

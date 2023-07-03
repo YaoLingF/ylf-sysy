@@ -5,6 +5,7 @@
 #include <map>
 #include "koopa.h"
 using namespace std;
+map<koopa_raw_value_t,int> R;//标记
 map<koopa_raw_value_t, int> map_reg;
 map<koopa_raw_function_t, int> func_sp; // 记录每个函数占据栈的大小
 map<koopa_raw_value_t, int> inst_sp; // 记录栈中每条指令的位置
@@ -21,20 +22,15 @@ void Visit(const koopa_raw_basic_block_t &bb);
 void Visit(const koopa_raw_value_t &value);
 void Visit(const koopa_raw_return_t &ret);
 void Visit(const koopa_raw_integer_t &integer);
-void Visit(const koopa_raw_binary_t &binary);
+void Visit_binary(const koopa_raw_value_t &value);
 void genriscv(string koopaIR);
-
-/*void Visit_binary(const koopa_raw_value_t &value);
-void Visit_bin_con(const koopa_raw_value_t &value);
-void Visit_bin_double_reg(const koopa_raw_value_t &value);*/
 
 void Prologue(const koopa_raw_function_t &func);
 void Epilogue(const koopa_raw_function_t &func);
 void li_lw(const koopa_raw_value_t &value, string dest_reg);
 void sw(const koopa_raw_value_t &dest, string src_reg);
 void Visit(const koopa_raw_store_t &store);
-void Visit(const koopa_raw_load_t &load);
-//string get_reg(const koopa_raw_value_t &value);
+void Visit_load(const koopa_raw_value_t &value);
 
 void Visit(const koopa_raw_branch_t &branch);
 void Visit(const koopa_raw_jump_t &jump);
@@ -43,10 +39,79 @@ void Visit(const koopa_raw_jump_t &jump);
 void Visit_global_alloc(const koopa_raw_value_t &value);
 void visit_aggregate(const koopa_raw_value_t &aggregate);
 //函数调用
-void Visit(const koopa_raw_call_t &call);
+void Visit_call(const koopa_raw_value_t &call);
 void visit_getptr(const koopa_raw_value_t &getptr);
 void visit_getelemptr(const koopa_raw_value_t &getelemptr);
+//--linearscan
+void Visit_(const koopa_raw_binary_t &binary,int i);
+void Visit_(const koopa_raw_return_t &ret,int i);
+void Visit_(const koopa_raw_store_t &store,int i);
+void Visit_(const koopa_raw_load_t &load,int i);
+void Visit_(const koopa_raw_branch_t &branch,int i);
+void Visit_(const koopa_raw_call_t &call,int i);
+void visit_getelemptr_(const koopa_raw_value_t &getelemptr,int i);
+void visit_getptr_(const koopa_raw_value_t &getptr,int i);
 
+string alloc();
+void restore();
+string reg[14]={"t3","t4","t5","t6","s0","s1","s2","s3",
+                "s4","s5","s6","s7","s8","s9"};
+map<string,int> used;
+map<string,koopa_raw_value_t> p;
+map<koopa_raw_value_t,string> pp;
+string alloc()//分配寄存器
+{
+  string ans="";
+  for(int i=0;i<14;i++)//是否有空寄存器
+  {
+    if(used[reg[i]]==0)
+    {
+      ans=reg[i];
+      break;
+    }
+  }
+  if(ans=="")//没有空的
+  {
+    string spill;
+    int maxn=0;
+    for(int i=0;i<14;i++)
+    {
+      if(R[p[reg[i]]]==0)
+      {
+        spill=reg[i];
+        break;
+      }
+      else
+      {
+        if(R[p[reg[i]]]>maxn)
+        {
+          spill=reg[i];
+          maxn=R[p[reg[i]]];
+        }
+      }
+    }
+    sw(p[spill],spill);
+    used[spill]=0;
+    pp[p[spill]]="";
+    return spill;
+  }
+  else//有空寄存器
+  {
+    return ans;
+  }
+}
+
+void restore()//局部寄存器分配,处理完每个块后需要复原
+{
+  for(int i=0;i<14;i++)
+  {
+    if(used[reg[i]]==1)//寄存器reg[i]中存有东西
+    {
+      sw(p[reg[i]],reg[i]);
+    }
+  }
+  R.clear(),used.clear(),p.clear(),pp.clear();
+}
 void genriscv(string koopaIR)
 { 
   const char* str = koopaIR.c_str();
@@ -118,6 +183,7 @@ void Visit(const koopa_raw_function_t &func)
   { //如果是函数声明则跳过 Sysy库函数
         return;
   }
+  
   // 执行一些其他的必要操作
   cout << " .text\n";
   cout << " .globl ";
@@ -188,9 +254,56 @@ void Visit(const koopa_raw_function_t &func)
 
 // 访问基本块
 void Visit(const koopa_raw_basic_block_t &bb) {
-  // 执行一些其他的必要操作
-  // ...
-  // 访问所有指令
+  
+  int len=bb->insts.len;
+  for(int i=len-1;i>=0;i--)
+  {
+    koopa_raw_value_t value = (koopa_raw_value_t) bb->insts.buffer[i];
+    const auto &kind = value->kind;
+    switch (kind.tag) 
+    {
+      case KOOPA_RVT_RETURN:
+        // 访问 return 指令
+        Visit_(kind.data.ret,i);
+        break;
+      case KOOPA_RVT_INTEGER:
+        // 访问 integer 指令
+        break;
+      case KOOPA_RVT_BINARY:
+        Visit_(kind.data.binary,i);
+        break;
+      case KOOPA_RVT_STORE:
+        Visit_(kind.data.store,i);
+        break;
+      case KOOPA_RVT_LOAD:
+        Visit_(kind.data.load,i);//%num = load @var
+        break;
+      case KOOPA_RVT_ALLOC://局部alloc 所占空间已经；预处理了，这里没有语句
+        break;
+      case KOOPA_RVT_BRANCH:
+        Visit_(kind.data.branch,i);
+        break;
+      case KOOPA_RVT_JUMP:
+        break;
+      case KOOPA_RVT_GLOBAL_ALLOC:
+        break;
+      case KOOPA_RVT_CALL://函数调用
+        Visit_(kind.data.call,i);//调用后返回值存储在a0中
+        break;
+      case KOOPA_RVT_AGGREGATE:
+        break;
+      case KOOPA_RVT_GET_ELEM_PTR:
+        visit_getelemptr_(value,i);
+        break;
+      case KOOPA_RVT_GET_PTR:
+        visit_getptr_(value,i);
+        break;
+      default:// 其他类型暂时遇不到
+        assert(false);
+    }
+
+  }
+  //访问所有指令
   string re = bb->name +1;
   if(re.substr(0,5) != "entry") cout<< re << ":\n";
   Visit(bb->insts);
@@ -210,15 +323,15 @@ void Visit(const koopa_raw_value_t &value) {
       Visit(kind.data.integer);
       break;
      case KOOPA_RVT_BINARY:
-      Visit(kind.data.binary);
-      sw(value, "t0");
+      Visit_binary(value);
+      //sw(value, "s0");
       break;
     case KOOPA_RVT_STORE:
       Visit(kind.data.store);
       break;
     case KOOPA_RVT_LOAD:
-      Visit(kind.data.load);//%num = load @var
-      sw(value, "t0");     //先把数加载到t0中,然后在sw到%num对应的内存地址中
+      Visit_load(value);//%num = load @var
+      //sw(value, "t0");     //先把数加载到t0中,然后在sw到%num对应的内存地址中
       break;
     case KOOPA_RVT_ALLOC://局部alloc 所占空间已经；预处理了，这里没有语句
       break;
@@ -233,8 +346,8 @@ void Visit(const koopa_raw_value_t &value) {
       Visit_global_alloc(value);
       break;
     case KOOPA_RVT_CALL://函数调用
-      Visit(kind.data.call);//调用后返回值存储在a0中
-      sw(value, "a0");
+      Visit_call(value);//调用后返回值存储在a0中
+      //sw(value, "a0");
       break;
     case KOOPA_RVT_AGGREGATE:
       visit_aggregate(value);
@@ -250,51 +363,90 @@ void Visit(const koopa_raw_value_t &value) {
   }
 }
 
-void Visit(const koopa_raw_binary_t &binary) {
-  li_lw(binary.lhs, "t0");
-  li_lw(binary.rhs, "t1");
+void Visit_binary(const koopa_raw_value_t &value) {
+  koopa_raw_binary_t binary=value->kind.data.binary;
+  koopa_raw_value_t l=binary.lhs,r=binary.rhs;
+  string reg1,reg2,dest;
+  if(l->kind.tag == KOOPA_RVT_INTEGER)//左操作是常数
+  {
+    reg1="t1";
+    li_lw(l,reg1);//li
+  }
+  else if(pp[l]=="")//左操作不在寄存器上
+  {
+    reg1=alloc();
+    used[reg1]=1;
+    p[reg1]=l;
+    li_lw(l,reg1);
+    pp[l]=reg1;
+  }
+  else reg1=pp[l];
+  if(r->kind.tag == KOOPA_RVT_INTEGER)//右操作是常数
+  {
+    reg2="t2";
+    li_lw(r,reg2);//li
+  }
+  else if(pp[r]=="")//右操作不在寄存器上
+  {
+    reg2=alloc();
+    used[reg2]=1;
+    p[reg2]=r;
+    li_lw(r,reg2);
+    pp[r]=reg2;
+  }
+  else reg2=pp[r];
+  
+  if(pp[value]=="")//%1=op %2,%3 (%1不在寄存器上)
+  {
+    dest=alloc();
+    used[dest]=1;
+    p[dest]=value;
+    pp[value]=dest;
+  }
+  else dest=pp[value];
+  
   if(binary.op == KOOPA_RBO_EQ){
-    cout << " xor  t0, t0, t1" << endl;
-    cout << " seqz t0, t0" << endl;
+    cout<<" xor  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
+    cout<<" seqz "<<dest<<", "<<dest<<"\n";
   }
   else if(binary.op == KOOPA_RBO_NOT_EQ){
-    cout << " xor  t0, t0, t1" << endl;
-    cout << " snez t0, t0" << endl;
+    cout<<" xor  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
+    cout<<" snez "<<dest<<", "<<dest<<"\n";
   }
   else if(binary.op == KOOPA_RBO_GT){
-    cout << " sgt  t0, t0, t1" << endl;
+    cout<<" sgt  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_LT){
-    cout << " slt  t0, t0, t1" << endl;
+    cout<<" slt  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_GE){
-    cout << " slt  t0, t0, t1" << endl;
-    cout << " seqz  t0, t0" << endl;
+    cout<<" slt  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
+    cout<<" seqz "<<dest<<", "<<dest<<"\n";
   }
   else if(binary.op == KOOPA_RBO_LE){
-    cout << " sgt  t0, t0, t1" << endl;
-    cout << " seqz  t0, t0" << endl;
+    cout<<" sgt  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
+    cout<<" seqz "<<dest<<", "<<dest<<"\n";
   }
   else if(binary.op == KOOPA_RBO_ADD){
-    cout << " add  t0, t0, t1" << endl;
+    cout<<" add  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_SUB){
-    cout << " sub  t0, t0, t1" << endl;
+    cout<<" sub  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_MUL){
-    cout << " mul  t0, t0, t1" << endl;
+    cout<<" mul  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_DIV){
-    cout << " div  t0, t0, t1" << endl;
+    cout<<" div  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_MOD){
-    cout << " rem  t0, t0, t1" << endl;
+    cout<<" rem  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_AND){
-    cout << " and  t0, t0, t1" << endl;
+    cout<<" and  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_OR){
-    cout << " or  t0, t0, t1" << endl;
+    cout<<" or  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
  
 }
@@ -304,6 +456,7 @@ void Visit(const koopa_raw_return_t &ret)
 {
     koopa_raw_value_t value = ret.value;
     if(value) li_lw(value, "a0");
+    restore();
     Epilogue(cur_func);
     cout << " ret" << endl;
 }
@@ -332,16 +485,23 @@ void li_lw(const koopa_raw_value_t &value, string dest_reg="t0"){
   }
   else
   { // 不是立即数，%0是指针指向对应指令
-    int cur_inst_sp = inst_sp[value];
-    if (cur_inst_sp < 2047)
-    { //如果srcstack 的size 小于 12 位 最大为+2047
-        cout << "  lw " + dest_reg + ", " + to_string(cur_inst_sp) + "(sp)" + "\n";
-    }
-    else
+    if(pp[value]=="")//不在寄存器上,也就是在内存上
     {
-        cout << "  li " + dest_reg + ", " + to_string(cur_inst_sp) + "\n";
-        cout << "  add " + dest_reg + ", sp, " + dest_reg + "\n";
-        cout << "  lw " + dest_reg + ", " + "0(" + dest_reg + ")\n";
+      int cur_inst_sp = inst_sp[value];
+      if (cur_inst_sp < 2047)
+      { //如果srcstack 的size 小于 12 位 最大为+2047
+          cout << "  lw " + dest_reg + ", " + to_string(cur_inst_sp) + "(sp)" + "\n";
+      }
+      else
+      {
+          cout << "  li " + dest_reg + ", " + to_string(cur_inst_sp) + "\n";
+          cout << "  add " + dest_reg + ", sp, " + dest_reg + "\n";
+          cout << "  lw " + dest_reg + ", " + "0(" + dest_reg + ")\n";
+      }
+    }
+    else//在寄存器上
+    {
+       cout<<"  mv "<<dest_reg<<" ,"<<pp[value]<<"\n";
     }
   }
 }
@@ -352,13 +512,13 @@ void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
     if(dest->kind.tag == KOOPA_RVT_GLOBAL_ALLOC)
     {
       string var_name = dest->name;
-      cout << " la t6, ";
+      cout << " la t2, ";
       for(int i = 1; i < var_name.size(); ++ i)
       {
         cout << var_name[i];
       }
       cout << endl;
-      cout << " sw " << src_reg << ", " << "0(t6)" << endl;
+      cout << " sw " << src_reg << ", " << "0(t2)" << endl;
     }
   }
   else
@@ -370,9 +530,9 @@ void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
     }
     else
     {
-        cout << "  li t3, " + to_string(cur_inst_sp) + "\n";
-        cout << "  add t3, sp, t3\n";
-        cout << "  sw " + src_reg + ", 0(t3)\n";
+        cout << "  li t2, " + to_string(cur_inst_sp) + "\n";
+        cout << "  add t2, sp, t2\n";
+        cout << "  sw " + src_reg + ", 0(t2)\n";
     }
   }
 }
@@ -380,57 +540,107 @@ void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
 void Visit(const koopa_raw_store_t &store){//store 临时/常量 地址
   koopa_raw_value_t value = store.value;
   koopa_raw_value_t dest = store.dest;
-  string store_value_reg = "t0";
+  string reg1,destreg;
   if(value->kind.tag == KOOPA_RVT_FUNC_ARG_REF)
   {
     int arg_index = value->kind.data.func_arg_ref.index;
     if(arg_index < 8)
     {
-      string src_reg = "a" + to_string(arg_index);
-      sw(dest, src_reg);
+      reg1 = "a" + to_string(arg_index);
+      if(pp[dest]=="")//不在寄存器上
+      {
+          destreg=alloc();
+          used[destreg]=1;
+          p[destreg]=dest;
+          pp[dest]=destreg;
+      }
+      else destreg=pp[dest];
+      cout<<"  mv "<<destreg<<" ,"<<reg1<<"\n";
     }
     else
     {
       // 高地址到低地址长，caller栈存的参数需要到callee栈顶（最大地址）+参数序号-8
       int arg_stack = func_sp[cur_func] + (arg_index - 8)*4;
       cout << " lw t0, " + to_string(arg_stack)+"(sp)\n";
-      sw(dest, "t0");
+      if(pp[dest]=="")//不在寄存器上
+      {
+          destreg=alloc();
+          used[destreg]=1;
+          p[destreg]=dest;
+          pp[dest]=destreg;
+      }
+      else destreg=pp[dest];
+      cout<<"  mv "<<destreg<<" ,t0\n";
     }
   }
-  else
+  else//不是传递参数
   {
-    li_lw(value, "t0");
-    //sw(dest, "t0");
-    string global_name, dest_stack;
-    string dest_reg = "t1";
+    if(value->kind.tag == KOOPA_RVT_INTEGER)//左操作是常数
+    {
+      reg1="t1";
+      li_lw(value,reg1);//li
+    }
+    else if(pp[value]=="")//不在寄存器上
+    {
+      reg1=alloc();
+      used[reg1]=1;
+      p[reg1]=value;
+      li_lw(value,reg1);
+      pp[value]=reg1;
+    }
+    else reg1=pp[value];
+    
     switch (store.dest->kind.tag)
     {
     case KOOPA_RVT_GLOBAL_ALLOC:
         //如果存入的位置是全局变量
         // 1. 再申请一个变量计算存入的内存位置
         // 先获取全局变量名称
-        sw(dest, "t0");
+        sw(dest, reg1);
         break;
     case KOOPA_RVT_ALLOC:
         //如果存入的位置是局部变量
-        sw(dest, "t0");
+        if(pp[dest]=="")//不在寄存器上
+        {
+          destreg=alloc();
+          used[destreg]=1;
+          p[destreg]=dest;
+          pp[dest]=destreg;
+        }
+        else destreg=pp[dest];
+        cout<<"  mv "<<destreg<<" ,"<<reg1<<"\n";
         break;
     case KOOPA_RVT_GET_ELEM_PTR:
         //如果是 getelemptr 型
-        //将指针对应stack中存放的内容取出 ： 指针指向的地址
-        li_lw(store.dest,dest_reg);
+        //将指针对应stack中存放的内容取出 ： 指针指向的地
+        if(pp[dest]=="")//不在寄存器上
+        {
+          destreg=alloc();
+          used[destreg]=1;
+          p[destreg]=dest;
+          li_lw(dest,destreg);
+          pp[dest]=destreg;
+        }
+        else destreg=pp[dest];
         //将内容从存入 地址对应的内存位置
-        cout << "  sw " + store_value_reg + ", 0(" + dest_reg + ")" << endl;
+        cout << "  sw " + reg1 + ", 0(" + destreg + ")" << endl;
         break;
     case KOOPA_RVT_GET_PTR:
         //如果是getptr型
-        li_lw(store.dest,dest_reg);
+        if(pp[dest]=="")//不在寄存器上
+        {
+          destreg=alloc();
+          used[destreg]=1;
+          p[destreg]=dest;
+          li_lw(dest,destreg);
+          pp[dest]=destreg;
+        }
+        else destreg=pp[dest];
         //将内容从存入 地址对应的内存位置
-        cout << "  sw " + store_value_reg + ", 0(" + dest_reg + ")" << endl;
+        cout << "  sw " + reg1 + ", 0(" + destreg + ")" << endl;
         break;
     default:
         cout << "store.dest->kind.tag: " << store.dest->kind.tag << endl;
-
         std::cerr << "程序错误：store dest 类型不符合预期" << std::endl;
         break;
     }
@@ -438,35 +648,97 @@ void Visit(const koopa_raw_store_t &store){//store 临时/常量 地址
   }
 }
 
-void Visit(const koopa_raw_load_t &load){//临时 = load 变量
+void Visit_load(const koopa_raw_value_t &value){//临时 = load 变量
+    koopa_raw_load_t load=value->kind.data.load;
     koopa_raw_value_t src = load.src;
-    switch (load.src->kind.tag)
+    string reg1,dest;
+    switch(load.src->kind.tag)
     {
     case KOOPA_RVT_INTEGER:
         //如果是integer型
         li_lw(src, "t0");
+        sw(value, "t0");
         break;
     case KOOPA_RVT_ALLOC:
         //如果是alloc型
-        li_lw(src, "t0");
+        if(pp[src]=="")//不在寄存器上
+        {
+          reg1=alloc();
+          used[reg1]=1;
+          p[reg1]=src;
+          li_lw(src,reg1);
+          pp[src]=reg1;
+        }
+        else reg1=pp[src];
+        if(pp[value]=="")//不在寄存器上
+        {
+          dest=alloc();
+          used[dest]=1;
+          p[dest]=value;
+          pp[value]=dest;
+        }
+        else dest=pp[value];
+        cout<<"  mv "<<dest<<" ,"<<reg1<<"\n";
         break;
     case KOOPA_RVT_GLOBAL_ALLOC:
         //如果是global alloc型
-        li_lw(src, "t0");
+        reg1="t0";
+        li_lw(src, reg1);
+        if(pp[value]=="")//不在寄存器上
+        {
+          dest=alloc();
+          used[dest]=1;
+          p[dest]=value;
+          pp[value]=dest;
+        }
+        else dest=pp[value];
+        cout<<"  mv "<<dest<<" ,"<<reg1<<"\n";
         break;
     case KOOPA_RVT_GET_ELEM_PTR:
         //如果是 getelemptr 型
         // 1. 将其指针的地址中的内容取出
-        li_lw(src, "t0");
-        //再将其load进来
-        cout << "  lw t0, 0(t0)\n";
+        if(pp[src]=="")//不在寄存器上
+        {
+          reg1=alloc();
+          used[reg1]=1;
+          p[reg1]=src;
+          li_lw(src,reg1);
+          pp[src]=reg1;
+        }
+        else reg1=pp[src];
+        if(pp[value]=="")//不在寄存器上
+        {
+          dest=alloc();
+          used[dest]=1;
+          p[dest]=value;
+          pp[value]=dest;
+        }
+        else dest=pp[value];
+        cout << "  lw t0, 0("<<reg1<<")\n";
+        cout<<"  mv "<<dest<<" ,t0\n";
         break;
     case KOOPA_RVT_GET_PTR:
         //如果是 getptr 型
         // 1. 将其指针的地址中的内容取出
-        li_lw(src, "t0");
-        //再将其load进来
-        cout << "  lw t0, 0(t0)\n";
+        if(pp[src]=="")//不在寄存器上
+        {
+          reg1=alloc();
+          used[reg1]=1;
+          p[reg1]=src;
+          li_lw(src,reg1);
+          pp[src]=reg1;
+        }
+        else reg1=pp[src];
+        if(pp[value]=="")//不在寄存器上
+        {
+          dest=alloc();
+          used[dest]=1;
+          p[dest]=value;
+          pp[value]=dest;
+        }
+        else dest=pp[value];
+        cout << "  lw t0, 0("<<reg1<<")\n";
+        cout<<"  mv "<<dest<<" ,t0\n";
         break;
     default:
         cout << "load.src->kind.tag = " << load.src->kind.tag << endl;
@@ -478,6 +750,7 @@ void Visit(const koopa_raw_load_t &load){//临时 = load 变量
 void Visit(const koopa_raw_branch_t &branch) {
   string label_true = branch.true_bb->name + 1;
   string label_false = branch.false_bb->name + 1;
+  restore();
   li_lw(branch.cond, "t0");
   cout << "  bnez t0, "  << label_true << endl;
   cout << "  j " << label_false << endl;
@@ -485,6 +758,7 @@ void Visit(const koopa_raw_branch_t &branch) {
 
 void Visit(const koopa_raw_jump_t &jump) {
   string label_target = jump.target->name + 1;
+  restore();
   cout << "  j " << label_target << endl;
 }
 
@@ -572,7 +846,8 @@ void visit_aggregate(const koopa_raw_value_t &aggregate)
     }
 }
 
-void Visit(const koopa_raw_call_t &call){
+void Visit_call(const koopa_raw_value_t &value){
+  koopa_raw_call_t call=value->kind.data.call;
   koopa_raw_slice_t call_args = call.args;
   koopa_raw_function_t callee = call.callee;
   int args_num = call_args.len;
@@ -589,7 +864,21 @@ void Visit(const koopa_raw_call_t &call){
       cout << " sw t0, " << dest_stack << endl;
     }
   }
+  restore();
   cout << " call " + string(callee->name + 1) + "\n";
+  if(value->ty->tag!=KOOPA_RTT_UNIT)//函数有返回值
+  {
+    string dest;
+    if(pp[value]=="")//%1=op %2,%3 (%1不在寄存器上)
+    {
+      dest=alloc();
+      used[dest]=1;
+      p[dest]=value;
+      pp[value]=dest;
+    }
+    else dest=pp[value];
+    cout<<"  mv "<<dest<<" ,a0\n";
+  }
 }
 
 void Prologue(const koopa_raw_function_t &func){
@@ -657,6 +946,7 @@ void visit_getelemptr(const koopa_raw_value_t &getelemptr)
 {
     auto src = getelemptr->kind.data.get_elem_ptr.src;
     auto index = getelemptr->kind.data.get_elem_ptr.index;
+    string reg1,reg2,dest;
 
     auto kind = getelemptr->ty->data.pointer.base;
     int arraysize = 1; //初始化数组长度
@@ -668,56 +958,53 @@ void visit_getelemptr(const koopa_raw_value_t &getelemptr)
         kind = kind->data.array.base; //获取当前数组的base
     }
 
-    string src_reg = "t0"; //本行的src地址所用的寄存器
     // 1. 计算 src 的地址
     if (src->kind.tag == KOOPA_RVT_GLOBAL_ALLOC)
     { //如果当前src为全局变量分配
         // 先获取全局变量名称
+        reg1="t0";
         string global_name = src->name;
         // 去掉@符号
         global_name = global_name.substr(1);
-        cout << "  la\t" + src_reg + ", " + global_name << endl;
+        cout << "  la\t" + reg1 + ", " + global_name << endl;
     }
     else if (src->kind.tag == KOOPA_RVT_ALLOC) //如果当前指向的是局部变量
     {
+        reg1="t0";
         int srcstack = inst_sp[src]; // src 对应的stack位置
         if (srcstack < 2047)
         { //如果srcstack 的size 小于 12 位 最大为+2047
-            cout << "  addi\t" + src_reg + ", sp, " + to_string(srcstack) << endl;
+            cout << "  addi\t" + reg1 + ", sp, " + to_string(srcstack) << endl;
         }
         else
         {
-            cout << "  li\t" + src_reg + ", " + to_string(srcstack) << endl;
-            cout << "  add\t" + src_reg + ", sp, " + src_reg << endl;
+            cout << "  li\t" + reg1 + ", " + to_string(srcstack) << endl;
+            cout << "  add\t" + reg1 + ", sp, " + reg1 << endl;
         }
     }
     else if (src->kind.tag == KOOPA_RVT_GET_ELEM_PTR)
     { //如果当前指向的是指针 getelemptr 将里面的内容load进来
-        int srcstack = inst_sp[src]; // src 对应的stack位置
-        if (srcstack < 2047)
-        { //如果srcstack 的size 小于 12 位 最大为+2047
-            cout << "  lw " + src_reg + ", " + to_string(srcstack) + "(sp)" + "\n";
-        }
-        else
+        if(pp[src]=="")//不在寄存器上
         {
-            cout << "  li " + src_reg + ", " + to_string(srcstack) + "\n";
-            cout << "  add " + src_reg + ", sp, " + src_reg + "\n";
-            cout << "  lw " + src_reg + ", " + "0(" + src_reg + ")\n";
+          reg1=alloc();
+          used[reg1]=1;
+          p[reg1]=src;
+          li_lw(src,reg1);
+          pp[src]=reg1;
         }
+        else reg1=pp[src];
     }
     else if (src->kind.tag == KOOPA_RVT_GET_PTR)
     { //如果当前指向的是指针 getptr 将里面的内容load进来
-        int srcstack = inst_sp[src]; // src 对应的stack位置
-        if (srcstack < 2047)
-        { //如果srcstack 的size 小于 12 位 最大为+2047
-            cout << "  lw " + src_reg + ", " + to_string(srcstack) + "(sp)" + "\n";
-        }
-        else
+        if(pp[src]=="")//不在寄存器上
         {
-            cout << "  li " + src_reg + ", " + to_string(srcstack) + "\n";
-            cout << "  add " + src_reg + ", sp, " + src_reg + "\n";
-            cout << "  lw " + src_reg + ", " + "0(" + src_reg + ")\n";
+          reg1=alloc();
+          used[reg1]=1;
+          p[reg1]=src;
+          li_lw(src,reg1);
+          pp[src]=reg1;
         }
+        else reg1=pp[src];
     }
     else
     {
@@ -726,17 +1013,36 @@ void visit_getelemptr(const koopa_raw_value_t &getelemptr)
     }
 
     // 2. 获得 index 的大小
-    string indexreg = "t1";
-    li_lw(index,indexreg);
-
+    if(index->kind.tag == KOOPA_RVT_INTEGER)//左操作是常数
+    {
+      reg2="t1";
+      li_lw(index,reg2);//li
+    }
+    else if(pp[index]=="")//不在寄存器上
+    {
+      reg2=alloc();
+      used[reg2]=1;
+      p[reg2]=index;
+      li_lw(index,reg2);
+      pp[index]=reg2;
+    }
+    else reg2=pp[index];
+    
     string size_reg = "t2";
     arraysize *= 4;
     cout << "  li " + size_reg + ", " + to_string(arraysize) + "\n"; //当前指针的大小
-    cout << "  mul " + indexreg + ", " + indexreg + ", " + size_reg + "\n";
+    cout << "  mul " + size_reg + ", " + reg2 + ", " + size_reg + "\n";
 
-    // 3. 计算 getelemptr 的结果
-    cout << "  add " + src_reg + ", " + src_reg + ", " + indexreg + "\n";
-    sw(getelemptr,src_reg);
+    if(pp[getelemptr]=="")//%1=op %2,%3 (%1不在寄存器上)
+    {
+      dest=alloc();
+      used[dest]=1;
+      p[dest]=getelemptr;
+      pp[getelemptr]=dest;
+    }
+    else dest=pp[getelemptr];
+    // 3. 计算 getptr 的结果
+    cout << "  add " + dest + ", " + reg1 + ", " + size_reg + "\n";
 }
 
 void visit_getptr(const koopa_raw_value_t &getptr)//出现在函数有参数的情况下
@@ -744,7 +1050,7 @@ void visit_getptr(const koopa_raw_value_t &getptr)//出现在函数有参数的�
     // TODO
     auto src = getptr->kind.data.get_ptr.src;
     auto index = getptr->kind.data.get_ptr.index;
-    // cout << "src->ty->data.pointer.base->tag:" << src->ty->data.pointer.base->tag << endl;
+    string reg1,reg2,dest;
 
     auto kind = src->ty->data.pointer.base; // src为指针，获取指针的基地址，以此来求 src指向内容的size
     int arraysize = 1;                      //初始化数组长度
@@ -755,14 +1061,19 @@ void visit_getptr(const koopa_raw_value_t &getptr)//出现在函数有参数的�
         arraysize *= cursize;
         kind = kind->data.array.base; //获取当前数组的base
     }
-    // cout << "arraysize:" << arraysize << endl;
-
-    string src_reg = "t0"; //本行的 src 地址所用的寄存器
 
     // 1. 计算 src 的地址 TODO 这一部分的 src 应该只是从 load 获得的
     if (src->kind.tag == KOOPA_RVT_LOAD)
     {
-        li_lw(src,src_reg);
+        if(pp[src]=="")//不在寄存器上
+        {
+          reg1=alloc();
+          used[reg1]=1;
+          p[reg1]=src;
+          li_lw(src,reg1);
+          pp[src]=reg1;
+        }
+        else reg1=pp[src];
     }
     else
     {
@@ -771,15 +1082,123 @@ void visit_getptr(const koopa_raw_value_t &getptr)//出现在函数有参数的�
     }
 
     // 2. 获得 index 的大小
-    string indexreg = "t1";
-    li_lw(index,indexreg);
-
+    if(index->kind.tag == KOOPA_RVT_INTEGER)//左操作是常数
+    {
+      reg2="t1";
+      li_lw(index,reg2);//li
+    }
+    else if(pp[index]=="")//不在寄存器上
+    {
+      reg2=alloc();
+      used[reg2]=1;
+      p[reg2]=index;
+      li_lw(index,reg2);
+      pp[index]=reg2;
+    }
+    else reg2=pp[index];
+    
     string size_reg = "t2";
     arraysize *= 4;
     cout << "  li " + size_reg + ", " + to_string(arraysize) + "\n"; //当前指针的大小
-    cout << "  mul " + indexreg + ", " + indexreg + ", " + size_reg + "\n";
+    cout << "  mul " + size_reg + ", " + reg2 + ", " + size_reg + "\n";
 
+    if(pp[getptr]=="")//%1=op %2,%3 (%1不在寄存器上)
+    {
+      dest=alloc();
+      used[dest]=1;
+      p[dest]=getptr;
+      pp[getptr]=dest;
+    }
+    else dest=pp[getptr];
     // 3. 计算 getptr 的结果
-    cout << "  add " + src_reg + ", " + src_reg + ", " + indexreg + "\n";
-    sw(getptr,src_reg);
+    cout << "  add " + dest + ", " + reg1 + ", " + size_reg + "\n";
+}
+
+
+
+
+//linearscan
+void Visit_(const koopa_raw_binary_t &binary,int i) {
+  if(inst_sp.find(binary.lhs) != inst_sp.end())//不是常数或者全局变量,也就是%num
+  {
+     if(R.find(binary.lhs)==R.end()) R[binary.lhs]=i;
+  }
+  if(inst_sp.find(binary.rhs) != inst_sp.end())//不是常数或者全局变量,也就是%num
+  {
+    if(R.find(binary.rhs)==R.end()) R[binary.rhs]=i;
+  }
+}
+void Visit_(const koopa_raw_return_t &ret,int i)
+{
+    koopa_raw_value_t value = ret.value;
+    if(value)//不是void
+    {
+      if(inst_sp.find(value) != inst_sp.end())//不是常数或者全局变量,也就是%num
+      {
+        if(R.find(value)==R.end()) R[value]=i;
+      }
+    }
+}
+void Visit_(const koopa_raw_store_t &store,int i){//store 临时/常量 地址
+  koopa_raw_value_t value = store.value;
+  if(inst_sp.find(value) != inst_sp.end())//不是常数或者全局变量,也就是%num
+  {
+    if(R.find(value)==R.end()) R[value]=i;
+  }
+  
+}
+
+void Visit_(const koopa_raw_load_t &load,int i){//临时 = load 变量
+    koopa_raw_value_t value = load.src;
+    if(inst_sp.find(value) != inst_sp.end())//不是常数或者全局变量,也就是%num
+    {
+      if(R.find(value)==R.end()) R[value]=i;
+    }
+}
+
+void Visit_(const koopa_raw_branch_t &branch,int i) {
+  koopa_raw_value_t value = branch.cond;
+  if(inst_sp.find(value) != inst_sp.end())//不是常数或者全局变量,也就是%num
+  {
+    if(R.find(value)==R.end()) R[value]=i;
+  }
+}
+void Visit_(const koopa_raw_call_t &call,int i){
+  koopa_raw_slice_t call_args = call.args;
+  int args_num = call_args.len;
+  for(int i = 0; i < args_num; ++ i)
+  {
+      koopa_raw_value_t value = (koopa_raw_value_t) call_args.buffer[i];
+      if(inst_sp.find(value) != inst_sp.end())//不是常数或者全局变量,也就是%num
+      {
+        if(R.find(value)==R.end()) R[value]=i;
+      }
+  }
+}
+void visit_getelemptr_(const koopa_raw_value_t &getelemptr,int i)
+{
+    auto src = getelemptr->kind.data.get_elem_ptr.src;
+    auto index = getelemptr->kind.data.get_elem_ptr.index;
+    if(inst_sp.find(src) != inst_sp.end())//不是常数或者全局变量,也就是%num
+    {
+        if(R.find(src)==R.end()) R[src]=i;
+    }
+    if(inst_sp.find(index) != inst_sp.end())//不是常数或者全局变量,也就是%num
+    {
+        if(R.find(index)==R.end()) R[index]=i;
+    }
+}
+
+void visit_getptr_(const koopa_raw_value_t &getptr,int i)//出现在函数有参数的情况下
+{
+    auto src = getptr->kind.data.get_ptr.src;
+    auto index = getptr->kind.data.get_ptr.index;
+    if(inst_sp.find(src) != inst_sp.end())//不是常数或者全局变量,也就是%num
+    {
+        if(R.find(src)==R.end()) R[src]=i;
+    }
+    if(inst_sp.find(index) != inst_sp.end())//不是常数或者全局变量,也就是%num
+    {
+        if(R.find(index)==R.end()) R[index]=i;
+    }
 }

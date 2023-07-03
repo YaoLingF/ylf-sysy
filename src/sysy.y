@@ -485,7 +485,7 @@ Exp__
 
 Exp
     : LOrExp {
-        cerr<<"exp\n";
+        //cerr<<"exp\n";
         auto ast = new ExpAST();
         ast->lorexp = unique_ptr<BaseAST>($1);
         $$ = ast;
@@ -493,7 +493,7 @@ Exp
 
 LOrExp
     : LAndExp {
-        cerr<<"lorexp\n";
+        //cerr<<"lorexp\n";
         auto ast = new LOrExp1AST();
         ast->landexp = unique_ptr<BaseAST>($1);
         $$ = ast;
@@ -508,7 +508,7 @@ LOrExp
 
 LAndExp
     : EqExp {
-        cerr<<"landexp\n";
+        //cerr<<"landexp\n";
         auto ast = new LAndExp1AST();
         ast->eqexp = unique_ptr<BaseAST>($1);
         $$ = ast;
@@ -523,7 +523,7 @@ LAndExp
 
 EqExp
     : RelExp {
-        cerr<<"eqexp\n";
+        //cerr<<"eqexp\n";
         auto ast = new EqExp1AST();
         ast->relexp = unique_ptr<BaseAST>($1);
         $$ = ast;
@@ -539,7 +539,7 @@ EqExp
 
 RelExp
     : AddExp {
-        cerr<<"relexp\n";
+        //cerr<<"relexp\n";
         auto ast = new RelExp1AST();
         ast->addexp = unique_ptr<BaseAST>($1);
         $$ = ast;
@@ -555,7 +555,7 @@ RelExp
   
 AddExp
     : MulExp {
-        cerr<<"addexp\n";
+        //cerr<<"addexp\n";
         auto ast = new AddExp1AST();
         ast->mulexp = unique_ptr<BaseAST>($1);
         $$ = ast;
@@ -571,14 +571,14 @@ AddExp
 
 MulExp
     : UnaryExp {
-        cerr<<"mulexp\n";
+        //cerr<<"mulexp\n";
         auto ast = new MulExp1AST();
         ast->unaryexp = unique_ptr<BaseAST>($1);
         $$ = ast;
 
     }
     | MulExp MulOp UnaryExp {
-        cerr<<"mul op unary\n";
+        //cerr<<"mul op unary\n";
         auto ast = new MulExp2AST();
         ast->mulexp = unique_ptr<BaseAST>($1);
         ast->mulop = *unique_ptr<string>($2);
@@ -603,7 +603,7 @@ MulOp
 
 UnaryExp
     : PrimaryExp{
-        cerr<<"unaryexp\n";
+        //cerr<<"unaryexp\n";
         auto ast = new UnaryExp1AST();
         ast->primaryexp = unique_ptr<BaseAST>($1);
         $$ = ast;
@@ -646,7 +646,7 @@ PrimaryExp
         $$ = ast;
     } 
     | Number {
-        cerr<<"primaryexp\n";
+        //cerr<<"primaryexp\n";
         auto ast = new PrimaryExp2AST();
         ast->number = $1;
         $$ = ast;
@@ -661,7 +661,6 @@ PrimaryExp
 
 UnaryOp
     : '+' {
-        cerr<<"+\n";
         $$ = new string("+");
     }
     | '-' {
@@ -697,7 +696,7 @@ EqOp
 
 Number
     : INT_CONST {
-        cerr<<"int_const\n";
+        //cerr<<"int_const\n";
         $$ = ($1);
     };
 
