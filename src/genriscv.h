@@ -402,7 +402,7 @@ void Visit_binary(const koopa_raw_value_t &value) {
     pp[r]=reg2;
   }
   else reg2=pp[r];
-  
+
   if(pp[value]=="")//%1=op %2,%3 (%1不在寄存器上)
   {
     dest=alloc();
@@ -519,13 +519,13 @@ void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
     if(dest->kind.tag == KOOPA_RVT_GLOBAL_ALLOC)
     {
       string var_name = dest->name;
-      cout << " la t2, ";
+      cout << " la s10, ";
       for(int i = 1; i < var_name.size(); ++ i)
       {
         cout << var_name[i];
       }
       cout << endl;
-      cout << " sw " << src_reg << ", " << "0(t2)" << endl;
+      cout << " sw " << src_reg << ", " << "0(s10)" << endl;
     }
   }
   else
@@ -537,9 +537,9 @@ void sw(const koopa_raw_value_t &dest, string src_reg="t0"){
     }
     else
     {
-        cout << "  li t2, " + to_string(cur_inst_sp) + "\n";
-        cout << "  add t2, sp, t2\n";
-        cout << "  sw " + src_reg + ", 0(t2)\n";
+        cout << "  li s10, " + to_string(cur_inst_sp) + "\n";
+        cout << "  add s10, sp, s10\n";
+        cout << "  sw " + src_reg + ", 0(s10)\n";
     }
   }
 }
@@ -1034,7 +1034,7 @@ void visit_getelemptr(const koopa_raw_value_t &getelemptr)
       pp[index]=reg2;
     }
     else reg2=pp[index];
-    
+   
     string size_reg = "t2";
     arraysize *= 4;
     cout << "  li " + size_reg + ", " + to_string(arraysize) + "\n"; //当前指针的大小
