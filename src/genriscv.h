@@ -5,6 +5,7 @@
 #include <map>
 #include "koopa.h"
 using namespace std;
+int nowline=0;
 map<koopa_raw_value_t,int> R;//标记
 map<koopa_raw_value_t, int> map_reg;
 map<koopa_raw_function_t, int> func_sp; // 记录每个函数占据栈的大小
@@ -76,7 +77,7 @@ string alloc()//分配寄存器
     int maxn=0;
     for(int i=0;i<14;i++)
     {
-      if(R[p[reg[i]]]==0)
+      if(R[p[reg[i]]]==0||R[p[reg[i]]]<nowline)
       {
         spill=reg[i];
         break;
@@ -306,7 +307,13 @@ void Visit(const koopa_raw_basic_block_t &bb) {
   //访问所有指令
   string re = bb->name +1;
   if(re.substr(0,5) != "entry") cout<< re << ":\n";
-  Visit(bb->insts);
+  for(int i=0;i<len;i++)
+  {
+    nowline=i;
+    koopa_raw_value_t value = (koopa_raw_value_t) bb->insts.buffer[i];
+    Visit(value);
+  }
+  //Visit(bb->insts);
 }
 
 // 访问指令
