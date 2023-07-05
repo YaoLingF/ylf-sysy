@@ -6,6 +6,7 @@
 #include "koopa.h"
 using namespace std;
 int nowline=0;
+map<int,int> po;
 map<koopa_raw_value_t,int> R;//标记
 map<koopa_raw_value_t, int> map_reg;
 map<koopa_raw_function_t, int> func_sp; // 记录每个函数占据栈的大小
@@ -127,6 +128,7 @@ void callersave()//函数调用前保存
 }
 void genriscv(string koopaIR)
 { 
+  for(int i=1,j=0;j<=30;i=i*2,j++) po[i]=j;
   const char* str = koopaIR.c_str();
   // 解析字符串 str, 得到 Koopa IR 程序
   koopa_program_t program;
@@ -400,9 +402,13 @@ void Visit_binary(const koopa_raw_value_t &value) {
     pp[l]=reg1;
   }
   else reg1=pp[l];
+  bool exist=false;
+  int number;
   if(r->kind.tag == KOOPA_RVT_INTEGER)//右操作是常数
   {
     reg2="t2";
+    exist=true;
+    number =r->kind.data.integer.value;
     li_lw(r,reg2);//li
   }
   else if(pp[r]=="")//右操作不在寄存器上
@@ -423,7 +429,7 @@ void Visit_binary(const koopa_raw_value_t &value) {
     pp[value]=dest;
   }
   else dest=pp[value];
-  
+ 
   if(binary.op == KOOPA_RBO_EQ){
     cout<<" xor  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
     cout<<" seqz "<<dest<<", "<<dest<<"\n";
@@ -447,16 +453,31 @@ void Visit_binary(const koopa_raw_value_t &value) {
     cout<<" seqz "<<dest<<", "<<dest<<"\n";
   }
   else if(binary.op == KOOPA_RBO_ADD){
+    if(exist&&dest==reg1&&number==0) return ;
     cout<<" add  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_SUB){
+    if(exist&&dest==reg1&&number==0) return ;
     cout<<" sub  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_MUL){
-    cout<<" mul  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
+    if(exist&&number==1)
+    {
+      if(dest==reg1) ;
+      else cout<<" mv "<<dest<<", "<<reg1<<"\n";
+    }
+    else 
+    {
+      cout<<" mul  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
+    }
   }
   else if(binary.op == KOOPA_RBO_DIV){
-    cout<<" div  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
+    //srai rd, rs1, shamt
+    if(exist&&po[number])
+    {
+      cout<<" srai "<<dest<<", "<<reg1<<", "<<po[number]<<"\n";
+    }
+    else cout<<" div  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
   }
   else if(binary.op == KOOPA_RBO_MOD){
     cout<<" rem  "<<dest<<", "<<reg1<<", "<<reg2<<"\n";
