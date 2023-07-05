@@ -520,7 +520,8 @@ void li_lw(const koopa_raw_value_t &value, string dest_reg="t0"){
     }
     else//在寄存器上
     {
-       cout<<"  mv "<<dest_reg<<" ,"<<pp[value]<<"\n";
+       if(dest_reg==pp[value]) ;
+       else cout<<"  mv "<<dest_reg<<" ,"<<pp[value]<<"\n";
     }
   }
 }
@@ -574,7 +575,8 @@ void Visit(const koopa_raw_store_t &store){//store 临时/常量 地址
           pp[dest]=destreg;
       }
       else destreg=pp[dest];
-      cout<<"  mv "<<destreg<<" ,"<<reg1<<"\n";
+      if(destreg==reg1);
+      else cout<<"  mv "<<destreg<<" ,"<<reg1<<"\n";
     }
     else
     {
@@ -589,7 +591,8 @@ void Visit(const koopa_raw_store_t &store){//store 临时/常量 地址
           pp[dest]=destreg;
       }
       else destreg=pp[dest];
-      cout<<"  mv "<<destreg<<" ,t0\n";
+      if(destreg=="t0") ;
+      else cout<<"  mv "<<destreg<<" ,t0\n";
     }
   }
   else//不是传递参数
@@ -627,7 +630,8 @@ void Visit(const koopa_raw_store_t &store){//store 临时/常量 地址
           pp[dest]=destreg;
         }
         else destreg=pp[dest];
-        cout<<"  mv "<<destreg<<" ,"<<reg1<<"\n";
+        if(destreg==reg1) ;
+        else cout<<"  mv "<<destreg<<" ,"<<reg1<<"\n";
         break;
     case KOOPA_RVT_GET_ELEM_PTR:
         //如果是 getelemptr 型
@@ -697,7 +701,8 @@ void Visit_load(const koopa_raw_value_t &value){//临时 = load 变量
           pp[value]=dest;
         }
         else dest=pp[value];
-        cout<<"  mv "<<dest<<" ,"<<reg1<<"\n";
+        if(dest==reg1) ;
+        else cout<<"  mv "<<dest<<" ,"<<reg1<<"\n";
         break;
     case KOOPA_RVT_GLOBAL_ALLOC:
         //如果是global alloc型
@@ -711,7 +716,8 @@ void Visit_load(const koopa_raw_value_t &value){//临时 = load 变量
           pp[value]=dest;
         }
         else dest=pp[value];
-        cout<<"  mv "<<dest<<" ,"<<reg1<<"\n";
+        if(dest==reg1 ) ;
+        else cout<<"  mv "<<dest<<" ,"<<reg1<<"\n";
         break;
     case KOOPA_RVT_GET_ELEM_PTR:
         //如果是 getelemptr 型
@@ -734,7 +740,8 @@ void Visit_load(const koopa_raw_value_t &value){//临时 = load 变量
         }
         else dest=pp[value];
         cout << "  lw t0, 0("<<reg1<<")\n";
-        cout<<"  mv "<<dest<<" ,t0\n";
+        if(dest=="t0") ;
+        else cout<<"  mv "<<dest<<" ,t0\n";
         break;
     case KOOPA_RVT_GET_PTR:
         //如果是 getptr 型
@@ -757,7 +764,8 @@ void Visit_load(const koopa_raw_value_t &value){//临时 = load 变量
         }
         else dest=pp[value];
         cout << "  lw t0, 0("<<reg1<<")\n";
-        cout<<"  mv "<<dest<<" ,t0\n";
+        if(dest=="t0") ;
+        else cout<<"  mv "<<dest<<" ,t0\n";
         break;
     default:
         cout << "load.src->kind.tag = " << load.src->kind.tag << endl;
@@ -896,7 +904,8 @@ void Visit_call(const koopa_raw_value_t &value){
       pp[value]=dest;
     }
     else dest=pp[value];
-    cout<<"  mv "<<dest<<" ,a0\n";
+    if(dest=="a0") ;
+    else cout<<"  mv "<<dest<<" ,a0\n";
   }
 }
 
