@@ -55,6 +55,7 @@ void visit_getptr_(const koopa_raw_value_t &getptr,int i);
 
 string alloc();
 void restore();
+void callersave();
 string reg[14]={"t3","t4","t5","t6","s0","s1","s2","s3",
                 "s4","s5","s6","s7","s8","s9"};
 map<string,int> used;
@@ -103,6 +104,17 @@ string alloc()//分配寄存器
 }
 
 void restore()//局部寄存器分配,处理完每个块后需要复原
+{
+  for(int i=0;i<14;i++)
+  {
+    if(used[reg[i]]==1&&p[reg[i]]->kind.tag==KOOPA_RVT_ALLOC)//寄存器reg[i]中存有东西
+    {
+      sw(p[reg[i]],reg[i]);
+    }
+  }
+  R.clear(),used.clear(),p.clear(),pp.clear();
+}
+void callersave()//函数调用前保存
 {
   for(int i=0;i<14;i++)
   {
@@ -757,8 +769,8 @@ void Visit_load(const koopa_raw_value_t &value){//临时 = load 变量
 void Visit(const koopa_raw_branch_t &branch) {
   string label_true = branch.true_bb->name + 1;
   string label_false = branch.false_bb->name + 1;
-  restore();
   li_lw(branch.cond, "t0");
+  restore();
   cout << "  bnez t0, "  << label_true << endl;
   cout << "  j " << label_false << endl;
 }
@@ -871,7 +883,7 @@ void Visit_call(const koopa_raw_value_t &value){
       cout << " sw t0, " << dest_stack << endl;
     }
   }
-  restore();
+  callersave();
   cout << " call " + string(callee->name + 1) + "\n";
   if(value->ty->tag!=KOOPA_RTT_UNIT)//函数有返回值
   {

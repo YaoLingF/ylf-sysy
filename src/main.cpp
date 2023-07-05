@@ -55,9 +55,9 @@ int main(int argc, const char *argv[])
 
   auto ret = yyparse(ast);
   assert(!ret);
-  //return 0;
+  // return 0;
   // dump koopa
-
+  
   string koopaIR = "";
   koopaIR += "decl @getint(): i32\n";
   koopaIR += "decl @getch(): i32\n";

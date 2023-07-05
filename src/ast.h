@@ -1972,20 +1972,41 @@ class AddExp2AST : public BaseAST
           koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
           R = "%" + to_string(cnt);
         }
-        switch(unaryop[0])
+        if(L[0]!='%'&&L[0]!='@'&&R[0]!='%'&&R[0]!='@')
         {
-          case '+':
-          koopaIR += "%" + to_string(++cnt) + "=add " + L +"," + R + "\n";
-          break;
+          string ans;
+          switch(unaryop[0])
+          {
+            case '+':
+            ans = to_string(stoi(L)+stoi(R));
+            break;
 
-          case '-':
-          koopaIR += "%" + to_string(++cnt) + "=sub " + L +"," + R + "\n";
-          break;
+            case '-':
+            ans = to_string(stoi(L)-stoi(R));
+            break;
 
-          default :
-          break;
+            default :
+            break;
+          }
+          return ans;
         }
-        return "%" + to_string(cnt);
+        else
+        {
+          switch(unaryop[0])
+          {
+            case '+':
+            koopaIR += "%" + to_string(++cnt) + "=add " + L +"," + R + "\n";
+            break;
+
+            case '-':
+            koopaIR += "%" + to_string(++cnt) + "=sub " + L +"," + R + "\n";
+            break;
+
+            default :
+            break;
+          }
+          return "%" + to_string(cnt);
+        }
       }
       int compute() const override
       {
@@ -2038,24 +2059,49 @@ class MulExp2AST : public BaseAST
           koopaIR += "%" + to_string(++cnt) + "=load " + R + "\n";
           R = "%" + to_string(cnt);
         }
-        switch(mulop[0])
+        if(L[0]!='%'&&L[0]!='@'&&R[0]!='%'&&R[0]!='@')
         {
-          case '*':
-          koopaIR += "%" + to_string(++cnt) + "=mul " + L +"," + R + "\n";
-          break;
+          string ans;
+          switch(mulop[0])
+          {
+            case '*':
+            ans = to_string(stoi(L)*stoi(R));
+            break;
 
-          case '/':
-          koopaIR += "%" + to_string(++cnt) + "=div " + L +"," + R + "\n";
-          break;
+            case '/':
+            ans = to_string(stoi(L)/stoi(R));
+            break;
 
-          case '%':
-          koopaIR += "%" + to_string(++cnt) + "=mod " + L +"," + R + "\n";
-          break;
+            case '%':
+            ans = to_string(stoi(L)%stoi(R));
+            break;
 
-          default :
-          break;
+            default :
+            break;
+          }
+          return ans;
         }
-        return "%" + to_string(cnt);
+        else 
+        {
+          switch(mulop[0])
+          {
+            case '*':
+            koopaIR += "%" + to_string(++cnt) + "=mul " + L +"," + R + "\n";
+            break;
+
+            case '/':
+            koopaIR += "%" + to_string(++cnt) + "=div " + L +"," + R + "\n";
+            break;
+
+            case '%':
+            koopaIR += "%" + to_string(++cnt) + "=mod " + L +"," + R + "\n";
+            break;
+
+            default :
+            break;
+          }
+          return "%" + to_string(cnt);
+        }
       }
       int compute() const override
       {
